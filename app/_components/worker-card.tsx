@@ -1,0 +1,39 @@
+// การ์ดข้อมูลช่างที่ลูกค้าเห็นหลังช่างกดรับงาน
+export function WorkerCard({
+  name,
+  photo,
+  rating,
+  reviewCount,
+  completedJobs,
+  status,
+}: {
+  name: string;
+  photo?: string;
+  rating: number;
+  reviewCount: number;
+  completedJobs: number;
+  status: string;
+}) {
+  const fullStars = Math.round(rating);
+  return (
+    <div className="flex items-center gap-4 rounded-xl border border-brand-200 bg-white p-4">
+      {photo
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={photo} alt={`รูปช่าง ${name}`} className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-brand-100" />
+        : <span aria-hidden="true" className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-brand-100 text-2xl font-bold text-brand-700">{name.trim().charAt(0) || '👤'}</span>}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-brand-700">ช่างของคุณ · {status}</p>
+        <p className="truncate text-lg font-bold text-slate-900">{name}</p>
+        {reviewCount > 0 ? (
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-slate-600">
+            <span aria-label={`เรทติ้ง ${rating} จาก 5`}><span className="text-amber-500" aria-hidden="true">{'★'.repeat(fullStars)}<span className="text-slate-300">{'★'.repeat(5 - fullStars)}</span></span> <span className="font-semibold text-slate-900">{rating.toFixed(1)}</span></span>
+            <span>({reviewCount} รีวิว)</span>
+            <span>· ทำงานแล้ว {completedJobs} งาน</span>
+          </p>
+        ) : (
+          <p className="mt-0.5 text-sm text-slate-600">ช่างใหม่ · ยังไม่มีรีวิว</p>
+        )}
+      </div>
+    </div>
+  );
+}

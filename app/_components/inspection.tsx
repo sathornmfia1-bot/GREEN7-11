@@ -1,0 +1,240 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import type { Job, QuoteAdjustment } from './jobs';
+import { debrisRatePerHour, grassHeightLabels, pricePerVisit } from './pricing';
+
+const money = (value: number) => new Intl.NumberFormat('th-TH').format(value);
+
+type Photo = { name: string; preview: string };
+type AiResult = { estimatedArea: number; grassHeight: number; debrisHours: number; completeness: number };
+
+// จำลองผลวิเคราะห์ภาพด้วย AI (PRD 4.2.5) — ผลคงที่ต่องาน เพื่อให้ทดสอบซ้ำได้
+function simulateAi(job: Job): AiResult {
+  const variance = ((job.id * 37) % 21) - 5; // -5% ถึง +15%
+  return {
+    estimatedArea: Math.max(1, Math.round(job.area * (1 + variance / 100))),
+    grassHeight: Math.min(2, job.grassHeight + (job.id % 2)),
+    debrisHours: job.id % 3 === 0 ? 0 : 1,
+    completeness: 92 + (job.id % 7),
+  };
+}
+
+function PhotoInput({ label, photo, onChange }: { label: string; photo: Photo | null; onChange: (photo: Photo) => void }) {
+  return (
+    <label className="block cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-medium text-slate-700 hover:border-brand-500">
+      {label}
+      {photo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={photo.preview} alt={label} className="mt-2 h-32 w-full rounded-lg object-cover" />
+      ) : (
+        <span className="mt-2 flex h-32 items-center justify-center rounded-lg bg-white text-xs font-normal text-slate-400">แตะเพื่อถ่าย/เลือกรูป</span>
+      )}
+      <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(event) => {
+        const file = event.target.files?.[0];
+        if (file?.type.startsWith('image/')) onChange({ name: file.name, preview: URL.createObjectURL(file) });
+      }} />
+    </label>
+  );
+}
+
+const decisionLabels: Record<QuoteAdjustment['customerDecision'], { text: string; className: string }> = {
+  pending: { text: 'รอลูกค้ายืนยัน', className: 'bg-amber-100 text-amber-700' },
+  accepted: { text: 'ลูกค้ายอมรับ', className: 'bg-emerald-100 text-emerald-700' },
+  rejected: { text: 'ลูกค้าปฏิเสธ', className: 'bg-rose-100 text-rose-700' },
+  expired: { text: 'หมดอายุ · ลูกค้าไม่ตอบใน 1 ชม.', className: 'bg-slate-200 text-slate-700' },
+};
+
+function minutesLeft(expiresAt: string) {
+  return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 60000));
+}
+
+export function AdjustmentHistory({ adjustments }: { adjustments: QuoteAdjustment[] }) {
+  if (!adjustments.length) return null;
+  return (
+    <ul className="mt-3 space-y-2">
+      {adjustments.map((adjustment) => (
+        <li key={adjustment.id} className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span><span className="text-slate-400 line-through">฿{money(adjustment.oldAmount)}</span> → <span className="font-semibold text-slate-900">฿{money(adjustment.newAmount)}</span></span>
+            <span className={`badge ${decisionLabels[adjustment.customerDecision].className}`}>{decisionLabels[adjustment.customerDecision].text}{adjustment.settlement === 'awaiting_payment' ? ' · รอชำระส่วนต่าง' : adjustment.settlement === 'paid_difference' ? ' · ชำระส่วนต่างแล้ว' : adjustment.settlement === 'refunded' ? ' · คืนเงินแล้ว' : ''}</span>
+          </div>
+          <ul className="mt-1 list-disc pl-5 text-xs text-slate-600">{adjustment.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+          {adjustment.note && <p className="mt-1 text-xs text-slate-500">หมายเหตุ: {adjustment.note}</p>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ฝั่งช่าง: อัปโหลดภาพก่อน-หลัง → ตรวจด้วย AI → ขอปรับราคา
+export function InspectionPanel({
+  job,
+  adjustments,
+  onRequestAdjustment,
+}: {
+  job: Job;
+  adjustments: QuoteAdjustment[];
+  onRequestAdjustment: (request: { newAmount: number; newArea: number; newGrassHeight: number; newExtraCharges: number; reasons: string[]; note: string }) => void;
+}) {
+  const [before, setBefore] = useState<Photo | null>(null);
+  const [after, setAfter] = useState<Photo | null>(null);
+  const [aiStatus, setAiStatus] = useState<'idle' | 'analyzing' | 'done'>('idle');
+  const [aiResult, setAiResult] = useState<AiResult | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [actualArea, setActualArea] = useState(String(job.area));
+  const [actualHeight, setActualHeight] = useState(job.grassHeight);
+  const [debrisHours, setDebrisHours] = useState(0);
+  const [note, setNote] = useState('');
+
+  useEffect(() => () => { if (before) URL.revokeObjectURL(before.preview); }, [before]);
+  useEffect(() => () => { if (after) URL.revokeObjectURL(after.preview); }, [after]);
+
+  const pending = adjustments.some((adjustment) => adjustment.customerDecision === 'pending' || adjustment.settlement === 'awaiting_payment');
+  const areaValue = Math.max(Math.round(Number(actualArea) || 0), 0);
+  const servicePrice = pricePerVisit(job.service, areaValue, actualHeight);
+  const debrisPrice = debrisHours * debrisRatePerHour;
+  const previousExtra = job.extraCharges ?? 0;
+  const newAmount = servicePrice + previousExtra + debrisPrice;
+  const difference = newAmount - job.price;
+
+  const reasons = [
+    areaValue !== job.area && `พื้นที่จริง ${money(areaValue)} ตารางวา (แจ้งไว้ ${money(job.area)} ตารางวา)`,
+    actualHeight !== job.grassHeight && `ความสูงหญ้าจริง ${grassHeightLabels[actualHeight]} (แจ้งไว้ ${grassHeightLabels[job.grassHeight]})`,
+    debrisHours > 0 && `เคลียร์เศษวัสดุเพิ่ม ${debrisHours} ชม. × ฿${debrisRatePerHour} = ฿${money(debrisPrice)}`,
+  ].filter((reason): reason is string => Boolean(reason));
+
+  function analyze() {
+    setAiStatus('analyzing');
+    window.setTimeout(() => {
+      setAiResult(simulateAi(job));
+      setAiStatus('done');
+    }, 1500);
+  }
+
+  function applyAiResult() {
+    if (!aiResult) return;
+    setActualArea(String(aiResult.estimatedArea));
+    setActualHeight(aiResult.grassHeight);
+    setDebrisHours(aiResult.debrisHours);
+    setFormOpen(true);
+  }
+
+  function submit() {
+    if (!reasons.length || difference === 0) return;
+    onRequestAdjustment({ newAmount, newArea: areaValue, newGrassHeight: actualHeight, newExtraCharges: previousExtra + debrisPrice, reasons, note: note.trim() });
+    setFormOpen(false);
+    setNote('');
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm font-semibold text-slate-800">1. ภาพก่อน-หลังตัดหญ้า</p>
+        <div className="mt-2 grid grid-cols-2 gap-3">
+          <PhotoInput label="ภาพก่อนทำงาน" photo={before} onChange={(photo) => { setBefore(photo); setAiStatus('idle'); setAiResult(null); }} />
+          <PhotoInput label="ภาพหลังทำงาน" photo={after} onChange={(photo) => { setAfter(photo); setAiStatus('idle'); setAiResult(null); }} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-slate-800">2. ตรวจงานด้วย AI</p>
+        {aiStatus === 'done' && aiResult ? (
+          <div className="mt-2 rounded-lg bg-emerald-50 p-3 text-sm text-slate-700" role="status">
+            <p className="font-semibold text-emerald-700">✓ ผลวิเคราะห์ (จำลอง)</p>
+            <ul className="mt-1 space-y-0.5">
+              <li>ความเรียบร้อยของงาน: <span className="font-semibold">{aiResult.completeness}%</span> {aiResult.completeness >= 90 ? '· ผ่านเกณฑ์' : '· ควรตรวจซ้ำ'}</li>
+              <li>พื้นที่โดยประมาณ: <span className="font-semibold">{money(aiResult.estimatedArea)} ตารางวา</span> (แจ้งไว้ {money(job.area)})</li>
+              <li>ความสูงหญ้าก่อนตัด: <span className="font-semibold">{grassHeightLabels[aiResult.grassHeight]}</span> (แจ้งไว้ {grassHeightLabels[job.grassHeight]})</li>
+              <li>เศษวัสดุที่ต้องเคลียร์: <span className="font-semibold">{aiResult.debrisHours ? `ประมาณ ${aiResult.debrisHours} ชม.` : 'ไม่พบ'}</span></li>
+            </ul>
+            {!job.isMonthly && !pending && <button type="button" onClick={applyAiResult} className="mt-2 text-sm font-semibold text-brand-700 hover:underline">ใช้ค่าจาก AI ในคำขอปรับราคา →</button>}
+          </div>
+        ) : (
+          <button type="button" onClick={analyze} disabled={!before || !after || aiStatus === 'analyzing'} className="mt-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50">
+            {aiStatus === 'analyzing' ? 'กำลังวิเคราะห์ภาพ...' : !before || !after ? 'แนบภาพก่อน-หลังเพื่อตรวจ' : '🤖 ตรวจภาพด้วย AI'}
+          </button>
+        )}
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-slate-800">3. ปรับราคาหน้างาน</p>
+        {job.isMonthly ? (
+          <p className="mt-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">งานแพ็กเกจรายเดือนไม่สามารถขอปรับราคาได้</p>
+        ) : pending ? (
+          <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">ส่งคำขอปรับราคาแล้ว รอลูกค้าดำเนินการ · ราคายังคงเป็น ฿{money(job.price)} จนกว่าลูกค้าจะยืนยัน</p>
+        ) : !formOpen ? (
+          <button type="button" onClick={() => { setActualArea(String(job.area)); setActualHeight(job.grassHeight); setDebrisHours(0); setFormOpen(true); }} className="mt-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700">ขอปรับราคา</button>
+        ) : (
+          <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block text-sm font-medium text-slate-700">พื้นที่จริง (ตารางวา)<input type="number" min="1" value={actualArea} onChange={(event) => setActualArea(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
+              <label className="block text-sm font-medium text-slate-700">ความสูงหญ้าจริง<select value={actualHeight} onChange={(event) => setActualHeight(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none">{grassHeightLabels.map((label, index) => <option key={label} value={index}>{label}</option>)}</select></label>
+              <label className="block text-sm font-medium text-slate-700">เคลียร์เศษวัสดุ (ชม.)<input type="number" min="0" step="1" value={debrisHours} onChange={(event) => setDebrisHours(Math.max(0, Math.round(Number(event.target.value) || 0)))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" /><span className="mt-0.5 block text-xs font-normal text-slate-500">฿{debrisRatePerHour}/ชม.</span></label>
+            </div>
+            <label className="mt-3 block text-sm font-medium text-slate-700">หมายเหตุถึงลูกค้า (ไม่บังคับ)<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="เช่น มีกิ่งไม้ใหญ่หักหลังบ้าน" className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
+
+            <div className="mt-3 rounded-lg bg-white p-3 text-sm">
+              <div className="flex justify-between"><span className="text-slate-600">ราคาเดิม</span><span>฿{money(job.price)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">ค่าบริการตามข้อมูลจริง</span><span>฿{money(servicePrice)}</span></div>
+              {previousExtra > 0 && <div className="flex justify-between"><span className="text-slate-600">ค่าใช้จ่ายเพิ่มที่ยอมรับแล้ว</span><span>฿{money(previousExtra)}</span></div>}
+              {debrisHours > 0 && <div className="flex justify-between"><span className="text-slate-600">ค่าเคลียร์เศษวัสดุ</span><span>฿{money(debrisPrice)}</span></div>}
+              <div className="mt-1 flex justify-between border-t border-slate-100 pt-1 font-semibold"><span>ราคาใหม่</span><span className="text-brand-700">฿{money(newAmount)}</span></div>
+              <div className={`flex justify-between text-xs ${difference > 0 ? 'text-rose-700' : difference < 0 ? 'text-emerald-700' : 'text-slate-500'}`}><span>ส่วนต่าง</span><span>{difference > 0 ? '+' : ''}฿{money(difference)}</span></div>
+              {reasons.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">{reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={submit} disabled={!reasons.length || difference === 0} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300">ส่งคำขอให้ลูกค้ายืนยัน</button>
+              <button type="button" onClick={() => setFormOpen(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">ยกเลิก</button>
+            </div>
+            {(!reasons.length || difference === 0) && <p className="mt-2 text-xs text-slate-500">แก้ข้อมูลที่ต่างจากหน้างานจริงก่อนส่งคำขอ</p>}
+          </div>
+        )}
+        <AdjustmentHistory adjustments={adjustments} />
+      </div>
+    </div>
+  );
+}
+
+// ฝั่งลูกค้า: เห็นราคาเดิม/ราคาใหม่ แล้วเลือกยอมรับหรือปฏิเสธ
+export function AdjustmentDecision({
+  job,
+  adjustment,
+  onDecide,
+  onPayDifference,
+  onSimulateExpiry,
+}: {
+  job: Job;
+  adjustment: QuoteAdjustment;
+  onDecide: (accept: boolean) => void;
+  onPayDifference: () => void;
+  onSimulateExpiry?: () => void;
+}) {
+  const difference = adjustment.newAmount - adjustment.oldAmount;
+  return (
+    <div className="rounded-xl border border-amber-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-amber-700">ช่างขอปรับราคา · {job.title}</p>
+        {adjustment.customerDecision === 'pending' && <span className="badge bg-amber-100 text-amber-800">⏱ ตอบภายใน {minutesLeft(adjustment.expiresAt)} นาที</span>}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 text-center">
+        <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">ราคาเดิม</p><p className="text-lg font-semibold text-slate-500 line-through">฿{money(adjustment.oldAmount)}</p></div>
+        <div className="rounded-lg bg-brand-50 p-3"><p className="text-xs text-slate-500">ราคาใหม่</p><p className="text-lg font-bold text-brand-700">฿{money(adjustment.newAmount)}</p></div>
+      </div>
+      <p className={`mt-2 text-center text-sm font-medium ${difference > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>{difference > 0 ? `ชำระเพิ่ม ฿${money(difference)}` : `ได้รับเงินคืน ฿${money(-difference)}`}</p>
+      <p className="mt-3 text-xs font-semibold text-slate-700">สาเหตุ</p>
+      <ul className="mt-1 list-disc pl-5 text-sm text-slate-700">{adjustment.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+      {adjustment.note && <p className="mt-1 text-sm text-slate-600">หมายเหตุจากช่าง: {adjustment.note}</p>}
+      {adjustment.settlement === 'awaiting_payment' ? (
+        <button type="button" onClick={onPayDifference} className="mt-4 w-full rounded-lg bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">จำลองสแกน QR ชำระส่วนต่าง ฿{money(difference)}</button>
+      ) : (
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => onDecide(false)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-rose-300 hover:text-rose-700">ปฏิเสธ</button>
+          <button type="button" onClick={() => onDecide(true)} className="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">ยอมรับ</button>
+        </div>
+      )}
+      {adjustment.customerDecision === 'pending' && <p className="mt-2 text-xs text-slate-500">ถ้าไม่ตอบภายใน 1 ชั่วโมง คำขอจะหมดอายุและราคาคงเดิม{onSimulateExpiry && <> · <button type="button" onClick={onSimulateExpiry} className="text-slate-400 underline hover:text-slate-600">(ทดสอบ) จำลองให้หมดอายุ</button></>}</p>}
+    </div>
+  );
+}

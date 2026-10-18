@@ -1,0 +1,38 @@
+export const baseAreaWa = 100;
+export const grassHeightMultipliers = [1, 1.5, 2];
+export const grassHeightLabels = ['น้อยกว่า 6"', 'มากกว่า 6"', 'มากกว่า 12"'];
+// ค่าเคลียร์เศษวัสดุเพิ่มหน้างาน (PRD 4.2.5)
+export const debrisRatePerHour = 200;
+
+export const pricingOptions = [
+  { name: 'ตัดหญ้าอย่างเดียว ไม่ขนทิ้ง', basePrice: 800, extraPerWa: 2 },
+  { name: 'ตัดหญ้าอย่างเดียว ขนทิ้ง', basePrice: 1000, extraPerWa: 3 },
+  { name: 'ตัดหญ้าและแต่งกิ่ง ไม่ขนทิ้ง', basePrice: 1000, extraPerWa: 3 },
+  { name: 'ตัดหญ้าและแต่งกิ่ง ขนทิ้ง', basePrice: 1200, extraPerWa: 4 },
+  { name: 'แต่งกิ่งอย่างเดียว ไม่ขนทิ้ง', basePrice: 1000, extraPerWa: 3 },
+  { name: 'แต่งกิ่งอย่างเดียว ขนทิ้ง', basePrice: 1200, extraPerWa: 4 },
+];
+
+// แพ็กเกจรายเดือน (1–3 ครั้งต่อเดือน) คิดราคาต่อครั้งเหมือนจ่ายครั้งเดียว ด้วยบริการนี้
+export const monthlyPackageService = 'ตัดหญ้าและแต่งกิ่ง ขนทิ้ง';
+
+export function pricePerVisit(serviceName: string, area: string | number, grassHeight: number) {
+  const option = pricingOptions.find((item) => item.name === serviceName) ?? pricingOptions[0];
+  const areaValue = Math.max(Number(area) || 0, 0);
+  return Math.round((option.basePrice + Math.max(areaValue - baseAreaWa, 0) * option.extraPerWa) * grassHeightMultipliers[grassHeight]);
+}
+
+// ส่วนลดแพ็กเกจรายเดือนตามจำนวนครั้งต่อเดือน
+export const monthlyDiscounts: Record<number, number> = { 1: 0.1, 2: 0.15, 3: 0.2 };
+
+export function monthlyPackagePrice(frequency: number, area: string | number, grassHeight: number) {
+  const fullPrice = pricePerVisit(monthlyPackageService, area, grassHeight) * frequency;
+  return { fullPrice, price: Math.round(fullPrice * (1 - (monthlyDiscounts[frequency] ?? 0))) };
+}
+
+// ค่า Platform ที่หักจากราคาลูกค้า ก่อนแสดงเป็นรายได้สุทธิของช่าง
+export const platformFeePercent = 15;
+
+export function netPayout(price: number) {
+  return Math.round(price * (1 - platformFeePercent / 100));
+}

@@ -1,0 +1,11 @@
+import type { Metadata } from 'next';
+import AdminDashboard from './_components/admin-dashboard';
+
+export const metadata: Metadata = {
+  title: 'แอดมิน | LawnFlow',
+  description: 'ตรวจสอบบัญชีช่าง ดูภาพรวมระบบ คลังงาน และลูกค้า',
+};
+
+export default function AdminPage() {
+  return <AdminDashboard />;
+}
