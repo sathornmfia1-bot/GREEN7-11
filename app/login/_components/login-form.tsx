@@ -93,7 +93,7 @@ export default function LoginForm({ role, next }: { role: Role; next: string | n
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-8">
-      <div className="flex items-center justify-between gap-3"><Logo /><Link href="/#login" className="text-sm font-medium text-brand-600 hover:underline">เปลี่ยนประเภทผู้ใช้</Link></div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"><Logo /><Link href="/#login" className="ml-auto text-sm font-medium text-brand-600 hover:underline">เปลี่ยนประเภทผู้ใช้</Link></div>
       <div className="card mt-3 p-5 sm:p-6">
         <p className="text-3xl" aria-hidden="true">{roleIcons[role]}</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-900">เข้าสู่ระบบ{roleLabels[role]}</h1>

@@ -139,7 +139,7 @@ export default function WorkerRegistrationForm() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      <div className="flex items-center justify-between gap-3"><Logo /><Link href="/login/mechanic" className="text-sm font-medium text-brand-600 hover:underline">มีบัญชีแล้ว? เข้าสู่ระบบ</Link></div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"><Logo /><Link href="/login/mechanic" className="ml-auto text-sm font-medium text-brand-600 hover:underline">มีบัญชีแล้ว? เข้าสู่ระบบ</Link></div>
       <header className="mt-3">
         <p><BrandName className="text-xs tracking-[0.2em]" /></p>
         <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">สมัครเป็นช่างตัดหญ้า</h1>

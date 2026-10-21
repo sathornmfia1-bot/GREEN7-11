@@ -52,10 +52,10 @@ const roles = [
 export default function Home() {
   return (
     <div className="min-h-screen bg-white">
-      <header className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 md:px-8">
+      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-4 md:px-8">
         <Logo />
-        <nav className="flex shrink-0 items-center gap-2 sm:gap-3">
-          <a href="#login" className="btn-outline whitespace-nowrap px-3 py-1.5 text-xs sm:px-4 sm:text-sm">เข้าสู่ระบบ</a>
+        <nav className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+          <a href="#login" className="btn-outline whitespace-nowrap px-3 py-1.5 text-xs sm:px-4 sm:text-sm"><span className="fit-zoom">เข้าสู่ระบบ</span></a>
           {/* ปุ่ม LINE มุมขวาบนสุด ให้ลูกค้ากดติดต่อได้ทันที (ทุกขนาดจอ) */}
           <LineContactButton />
         </nav>
@@ -63,8 +63,8 @@ export default function Home() {
 
       {/* Hero */}
       <section id="estimate" className="mx-auto max-w-6xl scroll-mt-6 px-4 pb-2 pt-6 sm:pb-6 md:px-8 md:pt-12">
-        <h1 className="max-w-2xl font-display text-[2.4rem] font-medium leading-[1.2] text-brand-500 md:text-5xl md:leading-[1.2]">บริการตัดหญ้าราคาเข้าถึงง่าย จองได้ในไม่กี่คลิก</h1>
-        <p className="mt-4 font-display text-lg text-brand-500 md:text-xl">รู้ราคาทันที · จองออนไลน์ · ช่างผ่านการตรวจสอบ</p>
+        <h1 className="fit-zoom max-w-2xl font-display text-[2.4rem] font-medium leading-[1.2] text-brand-500 md:text-5xl md:leading-[1.2]">บริการตัดหญ้าราคาเข้าถึงง่าย จองได้ในไม่กี่คลิก</h1>
+        <p className="fit-zoom mt-4 font-display text-lg leading-normal text-brand-500 md:text-xl md:leading-normal">รู้ราคาทันที · จองออนไลน์ · ช่างผ่านการตรวจสอบ</p>
         <div className="mt-8">
           <PriceEstimator />
         </div>

@@ -156,7 +156,7 @@ export function RoleShell({ role, nav, children }: { role: Role; nav: NavItem[];
             </div>
             <div className="flex min-w-0 items-center gap-3">
               <span className="hidden truncate text-sm font-medium text-slate-700 md:inline">{account.firstName} {account.lastName}</span>
-              <button type="button" onClick={logout} className="shrink-0 rounded-full border border-slate-300 px-3 py-1.5 font-display text-sm font-medium text-slate-700 sm:px-4 hover:border-rose-300 hover:text-rose-700">ออกจากระบบ</button>
+              <button type="button" onClick={logout} className="shrink-0 rounded-full border border-slate-300 px-3 py-1.5 font-display text-sm font-medium text-slate-700 sm:px-4 hover:border-rose-300 hover:text-rose-700"><span className="fit-zoom">ออกจากระบบ</span></button>
             </div>
           </div>
           {/* แท็บเล็ต/คอมพิวเตอร์: เมนูใต้แถบหัว */}

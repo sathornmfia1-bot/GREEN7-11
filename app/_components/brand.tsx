@@ -56,7 +56,7 @@ export function Logo({ href = '/', size = 'md' }: { href?: string; size?: 'md' |
   return (
     <Link href={href} className="inline-flex min-w-0 items-center gap-2" aria-label="GREEN 7-Eleven หน้าแรก">
       <LogoMark className={`shrink-0 ${mark}`} />
-      <BrandName className={text} />
+      <BrandName className={`fit-zoom ${text}`} />
     </Link>
   );
 }

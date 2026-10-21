@@ -9,6 +9,15 @@
 
 html {
   scroll-behavior: smooth;
+  /* กันเบราว์เซอร์มือถือขยายตัวอักษรเอง (font boosting) */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* มือถือที่ตั้งตัวอักษรใหญ่ (เช่น Samsung + เบราว์เซอร์ใน LINE): ย่อเฉพาะโลโก้ แถบบน และหัวข้อใหญ่ ให้ไม่ล้น/ไม่ทับกัน
+   --display-scale คำนวณใน app/layout.tsx · ข้อความเนื้อหายังใหญ่ตามที่ผู้ใช้ตั้งไว้ */
+.fit-zoom {
+  zoom: var(--display-scale, 1);
 }
 
 body {

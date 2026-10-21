@@ -89,7 +89,7 @@ export default function CustomerRegistrationForm() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      <div className="flex items-center justify-between gap-3"><Logo /><Link href="/login/customer" className="text-sm font-medium text-brand-600 hover:underline">มีบัญชีแล้ว? เข้าสู่ระบบ</Link></div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"><Logo /><Link href="/login/customer" className="ml-auto text-sm font-medium text-brand-600 hover:underline">มีบัญชีแล้ว? เข้าสู่ระบบ</Link></div>
       <header className="mt-3">
         <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">ลงทะเบียนลูกค้า</h1>
         <p className="mt-2 text-sm text-slate-600">สมัครบัญชีเพื่อจองบริการตัดหญ้าและดูแลสวน ยืนยันเบอร์โทรแล้วใช้งานได้ทันที</p>
