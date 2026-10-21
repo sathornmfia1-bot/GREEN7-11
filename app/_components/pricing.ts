@@ -13,6 +13,15 @@ export const pricingOptions = [
   { name: 'แต่งกิ่งอย่างเดียว ขนทิ้ง', basePrice: 1200, extraPerWa: 4 },
 ];
 
+// บริการแต่งกิ่งอย่างเดียวไม่เกี่ยวกับความสูงหญ้า: ใช้เกณฑ์พุ่มไม้สูงน้อยกว่า 2 เมตร (ตัวคูณ × 1.0 = ระดับ 0)
+export const shrubHeightLabel = 'พุ่มไม้สูงน้อยกว่า 2 เมตร';
+export const isPruningOnly = (serviceName: string) => serviceName.startsWith('แต่งกิ่งอย่างเดียว');
+
+// ข้อความความสูงสำหรับแสดงในรายละเอียดงาน
+export function heightText(serviceName: string, grassHeight: number) {
+  return isPruningOnly(serviceName) ? shrubHeightLabel : `หญ้า${grassHeightLabels[grassHeight]}`;
+}
+
 // แพ็กเกจรายเดือน (1–3 ครั้งต่อเดือน) คิดราคาต่อครั้งเหมือนจ่ายครั้งเดียว ด้วยบริการนี้
 export const monthlyPackageService = 'ตัดหญ้าและแต่งกิ่ง ขนทิ้ง';
 

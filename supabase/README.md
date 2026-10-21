@@ -1,28 +1,37 @@
 # เชื่อมต่อ Supabase
 
-## 1. สร้างฐานข้อมูล
-1. สร้างโปรเจกต์ที่ https://supabase.com/dashboard (เลือก Region: Southeast Asia (Singapore))
-2. เปิด **SQL Editor** → วางเนื้อหาไฟล์ `migrations/20261017000000_init.sql` ทั้งไฟล์ → **Run**
-   - สร้างตารางทั้งหมดตาม `../database.md`, เปิด Row Level Security และใส่ข้อมูลตั้งต้น (ตารางราคา, ค่าตั้งระบบ)
-   - หรือใช้ Supabase CLI: `supabase link --project-ref <ref>` แล้ว `supabase db push`
+ข้อมูลทั้งหมดของเว็บ (การจอง งาน การชำระเงิน Escrow รีวิว แจ้งเตือน ที่อยู่ ใบสมัครช่าง) เก็บใน Supabase
+**ยกเว้นระบบล็อกอินที่ยังเป็นแบบจำลอง:** เข้าสู่ระบบด้วยเบอร์โทร + OTP ที่แสดงบนหน้าจอ (ยังไม่ส่ง SMS จริง)
 
-## 2. ตั้งค่าหน้าเว็บ
-1. คัดลอก `.env.local.example` (ที่ root ของโปรเจกต์) เป็น `.env.local`
-2. ใส่ค่าจาก **Project Settings → API**
-   - `NEXT_PUBLIC_SUPABASE_URL` = Project URL
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = anon / publishable key
-3. รีสตาร์ท `npm run dev` (ตัวแปร env อ่านตอนเริ่ม server เท่านั้น)
-4. เปิด `/admin` → แท็บภาพรวม → การ์ด **ฐานข้อมูล Supabase** ต้องขึ้น "✓ เชื่อมต่อสำเร็จ"
+## โครงสร้าง
+- หน้าเว็บ → Next.js server actions (`app/_server/actions.ts`) → Supabase ด้วย service role key
+- เบราว์เซอร์ไม่ได้ต่อ Supabase โดยตรง (RLS ปิดกั้นผู้ใช้ไม่ล็อกอิน) — เซิร์ฟเวอร์ตรวจเซสชันของแต่ละ role แล้วกรองข้อมูลก่อนส่งให้หน้าเว็บ
+- หน้าเว็บโหลดข้อมูลใหม่ทุก 5 วินาที และทันทีหลังกดปุ่ม
 
-## 3. ความต่างจาก database.md
-- ตาราง `users` อ้างอิง `auth.users` ของ Supabase Auth — รหัสผ่านและ OTP ให้ Supabase Auth จัดการ จึงไม่มีคอลัมน์ `password_hash` และตาราง `otp_codes`
-- เพิ่มฟังก์ชัน `accept_job(job_id)` สำหรับช่างกดรับงาน (ตรวจการอนุมัติ, VIP 30 วินาที, วันละ 1 งาน, กันรับซ้ำ)
-- เพิ่ม view `mechanic_public_cards` ให้ลูกค้าเห็นรูป/เรทติ้งช่างโดยไม่เห็นข้อมูลธนาคาร
-- การเปลี่ยนสถานะงานและรายการเงิน (ชำระ / คืนเงิน / Escrow / โอน) ไม่เปิดให้เขียนจากเบราว์เซอร์ ต้องทำผ่านฟังก์ชันฝั่งเซิร์ฟเวอร์
+## ตั้งค่า
+1. รันใน **SQL Editor** ตามลำดับ (ครั้งเดียว)
+   - `migrations/20261017000000_init.sql` — ตารางทั้งหมด + ข้อมูลตารางราคา
+   - `migrations/20261017010000_lock_user_name.sql` — ล็อกชื่อ-นามสกุล
+   - `migrations/20261018000000_app_notification_types.sql` — ประเภทแจ้งเตือน “ชำระเงินสำเร็จ” และ “ได้รับรีวิว”
+   - `migrations/20261020000000_review_topics.sql` — รีวิวแยกหัวข้อ (สถานะงาน · ดาว 3 หัวข้อ · ปัญหาที่พบ)
+2. คัดลอก `.env.local.example` เป็น `.env.local` แล้วใส่ URL, anon key และ **service_role key**
+3. สร้างบัญชีทดสอบ: `node scripts/seed-test-accounts.mjs` (รันซ้ำได้)
+4. รีสตาร์ท `npm run dev`
 
-## 4. ขั้นตอนถัดไป
-1. **ระบบล็อกอิน** — Supabase Auth (OTP ทางโทรศัพท์ต้องตั้ง SMS provider เช่น Twilio ใน Authentication → Providers → Phone)
-2. **ลงทะเบียนลูกค้า/ช่าง** — บันทึกลง `users`, `customer_profiles`, `mechanic_profiles`, `service_addresses` และอัปโหลดรูปไป Supabase Storage
-3. **ตารางราคา** — อ่านจาก `service_types`, `grass_height_levels`, `monthly_packages`, `platform_settings` แทนค่าในโค้ด
-4. **การจอง/Job Pool/ตรวจงาน/แจ้งเตือน** — บันทึกลง `bookings`, `jobs`, `quote_adjustments`, `notifications` (ใช้ Realtime สำหรับแจ้งเตือน)
-5. **การเงิน** — เชื่อม payment gateway (PromptPay QR) ผ่าน Edge Function ใช้ service role key
+## บัญชีทดสอบ (OTP แสดงบนหน้าจอ)
+| role | ชื่อ | เบอร์ |
+|---|---|---|
+| ลูกค้า | สมชาย ใจดี | 081-234-5678 |
+| ลูกค้า | สมหญิง รักสวน | 089-888-7777 |
+| ช่าง (อนุมัติแล้ว) | สมศักดิ์ ตัดเก่ง | 089-111-2222 |
+| ช่าง (อนุมัติแล้ว) | อนันต์ มือดี | 089-444-5555 |
+| ช่าง (อนุมัติแล้ว) | วิไล สวนสวย | 081-222-3333 |
+| ช่าง (รออนุมัติ) | ประเสริฐ ขยันดี | 089-123-4567 |
+| แอดมิน | ผู้ดูแล ระบบ | 080-000-0000 |
+
+ล้างข้อมูลการใช้งานทั้งหมด (คงบัญชีไว้): หน้าแอดมิน → ภาพรวม → **ล้างข้อมูลการใช้งาน**
+
+## ขั้นตอนถัดไป
+1. **OTP จริง** — ตั้ง SMS provider ใน Supabase Auth แล้วเปลี่ยนจากเซสชันจำลองเป็นเซสชันของ Supabase Auth (บัญชีถูกสร้างใน `auth.users` ไว้แล้ว)
+2. **รูปภาพ** — ตอนนี้เก็บเป็น data URL ในตาราง ควรย้ายไป Supabase Storage
+3. **Payment gateway จริง** — ตอนนี้ QR และการโอนเงินเป็นแบบจำลอง (บันทึกรายการในตาราง payments / payouts / refunds)

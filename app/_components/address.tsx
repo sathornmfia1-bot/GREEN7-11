@@ -138,7 +138,7 @@ export function AddressEditor({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-base text-slate-800">ตำแหน่งบน Google Maps</span>
           <div className="flex gap-2">
-            <button type="button" onClick={pinCurrentLocation} className="rounded-md border border-brand-600 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-50">📍 ใช้ตำแหน่งปัจจุบัน</button>
+            <button type="button" onClick={pinCurrentLocation} className="rounded-full border border-brand-600 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-50">📍 ใช้ตำแหน่งปัจจุบัน</button>
             {details.location && <button type="button" onClick={() => onChange({ ...details, location: undefined })} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700">ล้างหมุด</button>}
           </div>
         </div>

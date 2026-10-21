@@ -110,7 +110,7 @@ export function PhoneOtpField({
       <label className={labelClass}>เบอร์โทร <span className="text-rose-700">*</span>
         <div className="mt-1 flex gap-2">
           <input type="tel" inputMode="numeric" value={phone} onChange={(event) => changePhone(event.target.value)} placeholder="08x-xxx-xxxx" autoComplete="tel" className={`${inputClass} mt-0`} />
-          <button type="button" onClick={sendOtp} disabled={cooldown > 0 || verified} className="shrink-0 rounded-lg border border-brand-600 px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:hover:bg-transparent">
+          <button type="button" onClick={sendOtp} disabled={cooldown > 0 || verified} className="shrink-0 rounded-full border border-brand-600 px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 disabled:hover:bg-transparent">
             {verified ? 'ยืนยันแล้ว' : cooldown > 0 ? `ขอใหม่ใน ${cooldown} วิ` : sentOtp ? 'ขอ OTP ใหม่' : 'ส่ง OTP'}
           </button>
         </div>
@@ -121,7 +121,7 @@ export function PhoneOtpField({
       ) : sentOtp && (
         <div className="mt-3 flex gap-2">
           <input value={otpInput} onChange={(event) => setOtpInput(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="รหัส OTP 6 หลัก" aria-label="รหัส OTP" className={`${inputClass} mt-0 tracking-widest`} />
-          <button type="button" onClick={verifyOtp} disabled={otpInput.length !== 6} className="shrink-0 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:bg-slate-300">ยืนยัน</button>
+          <button type="button" onClick={verifyOtp} disabled={otpInput.length !== 6} className="shrink-0 rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:bg-slate-300">ยืนยัน</button>
         </div>
       )}
       <FieldError message={localError || phoneError || otpError} />

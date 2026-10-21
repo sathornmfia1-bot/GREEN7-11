@@ -1,49 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { formatAddress } from '../../_components/address';
-import { loadCustomerProfile, type CustomerProfile } from '../../_components/customer-profile';
 import { formatRelativeThaiDate, formatThaiDate, isoDateFromToday } from '../../_components/date-input';
-import { sampleJobs } from '../../_components/jobs';
-import { grassHeightLabels, netPayout, platformFeePercent } from '../../_components/pricing';
+import { heightText, netPayout, platformFeePercent } from '../../_components/pricing';
 import { ColumnChart } from '../../_components/column-chart';
-import { bucketize, completedJobHistory, groupBy, jobsInPeriod, periodOptions, summarize, type Period } from '../../_components/earnings';
+import { bucketize, groupBy, jobsInPeriod, periodOptions, summarize, toCompletedJobs, type Period } from '../../_components/earnings';
+import { useData, useRun } from '../../_components/role-shell';
 import { PeriodFilter, StatTile } from '../../_components/stat-tile';
+import { resetActivityData, reviewMechanic } from '../../_server/actions';
+import type { MechanicAccount, MechanicStatus } from '../../_lib/types';
+import { formatPhone, money } from '../../_lib/rules';
 import { checkSupabase, type HealthReport } from '../../_lib/supabase-health';
-import { loadWorkerProfile, updateWorkerProfileStatus, type WorkerProfile, type WorkerStatus } from '../../_components/worker-profile';
+import { AreaReport } from './area-report';
 
-const money = (value: number) => new Intl.NumberFormat('th-TH').format(value);
-
-type Tab = 'overview' | 'revenue' | 'workers' | 'jobs' | 'customers';
-type Application = { id: string; source: 'local' | 'sample'; profile: WorkerProfile };
-
-// ใบสมัครตัวอย่าง (ตัวอย่างหน้าจอ) — ใบสมัครจริงจากหน้า /register-worker ในเบราว์เซอร์นี้จะแสดงรวมด้วย
-const sampleApplications: Application[] = [
-  {
-    id: 'sample-1',
-    source: 'sample',
-    profile: {
-      firstName: 'ประเสริฐ', lastName: 'ขยันดี', phone: '0891234567', bankName: 'ธนาคารกสิกรไทย', accountNumber: '1234567890', accountName: 'ประเสริฐ ขยันดี', serviceRadiusKm: 20,
-      baseAddress: { addressLine: '55 ถนนติวานนท์', province: 'นนทบุรี', amphoe: 'ปากเกร็ด', district: 'บ้านใหม่', location: { lat: 13.9012, lng: 100.5143 } },
-      idCardFileName: 'idcard-prasert.jpg', status: 'pending_verification', submittedAt: `${isoDateFromToday(-1)}T09:15:00`,
-    },
-  },
-  {
-    id: 'sample-2',
-    source: 'sample',
-    profile: {
-      firstName: 'วิไล', lastName: 'สวนสวย', phone: '0812223333', bankName: 'ธนาคารไทยพาณิชย์', accountNumber: '9876543210', accountName: 'วิไล สวนสวย', serviceRadiusKm: 10,
-      baseAddress: { addressLine: '210 ซอยลาดพร้าว 71', province: 'กรุงเทพมหานคร', amphoe: 'วังทองหลาง', district: 'สะพานสอง' },
-      idCardFileName: 'idcard-wilai.jpg', status: 'verified', submittedAt: `${isoDateFromToday(-6)}T14:40:00`, reviewedAt: `${isoDateFromToday(-5)}T10:00:00`,
-    },
-  },
-];
-
-const sampleCustomers: Pick<CustomerProfile, 'firstName' | 'lastName' | 'phone' | 'email' | 'addressLabel' | 'address' | 'createdAt'>[] = [
-  { firstName: 'สมชาย', lastName: 'ใจดี', phone: '0812345678', email: 'somchai@example.com', addressLabel: 'บ้าน', address: { addressLine: '1', province: 'กรุงเทพมหานคร', amphoe: 'คลองสาน', district: 'คลองต้นไทร' }, createdAt: `${isoDateFromToday(-20)}T08:00:00` },
-  ...sampleJobs.map((job) => ({ firstName: job.firstName, lastName: job.lastName, phone: '-', email: '-', addressLabel: 'บ้าน', address: job.address, createdAt: `${isoDateFromToday(-10)}T08:00:00` })),
-];
+type Tab = 'overview' | 'revenue' | 'areas' | 'workers' | 'jobs' | 'customers';
+type WorkerStatus = MechanicStatus;
 
 const workerStatusStyles: Record<WorkerStatus, { label: string; icon: string; className: string }> = {
   pending_verification: { label: 'รอตรวจสอบ', icon: '⏳', className: 'bg-amber-100 text-amber-800' },
@@ -51,8 +23,8 @@ const workerStatusStyles: Record<WorkerStatus, { label: string; icon: string; cl
   rejected: { label: 'ไม่อนุมัติ', icon: '✕', className: 'bg-rose-100 text-rose-800' },
 };
 
-function maskAccount(accountNumber: string) {
-  return accountNumber.length > 4 ? `xxx-x-x${accountNumber.slice(-4, -1)}-${accountNumber.slice(-1)}` : accountNumber;
+function maskAccount(last4: string) {
+  return `xxx-x-x${last4.slice(0, 3)}-${last4.slice(-1)}`;
 }
 
 function formatDateTime(iso: string) {
@@ -62,13 +34,15 @@ function formatDateTime(iso: string) {
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
-  const [applications, setApplications] = useState<Application[]>(sampleApplications);
-  const [customers, setCustomers] = useState(sampleCustomers);
+  const db = useData();
+  const run = useRun();
+  const applications = db.mechanics;
+  const customers = db.customers;
+  const allJobs = db.jobs;
   const [statusFilter, setStatusFilter] = useState<WorkerStatus | 'all'>('pending_verification');
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [jobQuery, setJobQuery] = useState('');
-  const [notice, setNotice] = useState('');
   const [dbHealth, setDbHealth] = useState<HealthReport | null>(null);
 
   function runDbCheck() {
@@ -78,74 +52,65 @@ export default function AdminDashboard() {
 
   useEffect(runDbCheck, []);
   const [revenuePeriod, setRevenuePeriod] = useState<Period>(30);
-  const revenueJobs = jobsInPeriod(completedJobHistory, revenuePeriod);
+  // งานที่ทำเสร็จจริงในฐานข้อมูล
+  const mechanicName = (id: string) => { const found = db.mechanics.find((item) => item.id === id); return found ? `${found.firstName} ${found.lastName}` : id; };
+  const revenueJobs = jobsInPeriod(toCompletedJobs(allJobs, db.reviews, mechanicName), revenuePeriod);
   const revenue = summarize(revenueJobs);
   const revenueByWorker = groupBy(revenueJobs, (job) => job.workerName).sort((a, b) => b.net - a.net);
   const revenueByService = groupBy(revenueJobs, (job) => job.service).sort((a, b) => b.platformFee - a.platformFee);
 
-  useEffect(() => {
-    const worker = loadWorkerProfile();
-    if (worker) setApplications((current) => [{ id: 'local', source: 'local', profile: worker }, ...current.filter((item) => item.id !== 'local')]);
-    const customer = loadCustomerProfile();
-    if (customer) setCustomers((current) => [customer, ...current]);
-  }, []);
-
-  const pendingCount = applications.filter((item) => item.profile.status === 'pending_verification').length;
-  const totalJobValue = sampleJobs.reduce((sum, job) => sum + job.price, 0);
-  const platformRevenue = sampleJobs.reduce((sum, job) => sum + (job.price - netPayout(job.price)), 0);
-  const visibleApplications = applications.filter((item) => statusFilter === 'all' || item.profile.status === statusFilter);
+  const pendingCount = applications.filter((item) => item.status === 'pending_verification').length;
+  const activeJobs = allJobs.filter((job) => !job.cancelledAt);
+  const openJobs = activeJobs.filter((job) => !job.mechanicId);
+  const totalJobValue = activeJobs.reduce((sum, job) => sum + job.price, 0);
+  const platformRevenue = activeJobs.reduce((sum, job) => sum + (job.price - netPayout(job.price)), 0);
+  const visibleApplications = applications.filter((item) => statusFilter === 'all' || item.status === statusFilter);
   const query = jobQuery.trim();
-  const visibleJobs = [...sampleJobs]
+  const visibleJobs = [...allJobs]
     .sort((a, b) => a.date.localeCompare(b.date))
     .filter((job) => !query || [job.title, job.service, job.firstName, job.lastName, formatAddress(job.address)].some((text) => text.includes(query)));
 
-  function review(application: Application, status: WorkerStatus, reason?: string) {
-    const reviewedAt = new Date().toISOString();
-    if (application.source === 'local') updateWorkerProfileStatus(status, reason);
-    setApplications((current) => current.map((item) => item.id === application.id ? { ...item, profile: { ...item.profile, status, rejectReason: reason, reviewedAt } } : item));
+  async function review(application: MechanicAccount, status: Exclude<WorkerStatus, 'pending_verification'>, reason?: string) {
+    const result = await run(reviewMechanic(application.id, status, reason));
+    if (!result.ok) return;
     setRejectingId(null);
     setRejectReason('');
-    setNotice(`${status === 'verified' ? 'อนุมัติ' : 'ไม่อนุมัติ'}ใบสมัครของ ${application.profile.firstName} ${application.profile.lastName} แล้ว`);
+  }
+
+  function jobStatus(job: (typeof allJobs)[number]) {
+    if (job.cancelledAt) return { text: 'ยกเลิกแล้ว', className: 'bg-slate-200 text-slate-700' };
+    if (!job.mechanicId) return { text: 'รอช่างรับ', className: 'bg-amber-100 text-amber-800' };
+    if (job.workStage === 'done') return { text: job.payoutReleasedAt ? 'เสร็จ · โอนแล้ว' : 'เสร็จ · พักใน Escrow', className: 'bg-emerald-100 text-emerald-800' };
+    return { text: `ช่าง${mechanicName(job.mechanicId)}`, className: 'bg-sky-100 text-sky-800' };
   }
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'overview', label: 'ภาพรวม' },
     { id: 'revenue', label: 'รายงานรายรับ' },
+    { id: 'areas', label: 'รายงานตามพื้นที่' },
     { id: 'workers', label: 'ตรวจสอบบัญชีช่าง', count: pendingCount },
-    { id: 'jobs', label: 'คลังงาน', count: sampleJobs.length },
+    { id: 'jobs', label: 'คลังงาน', count: allJobs.length },
     { id: 'customers', label: 'ลูกค้า', count: customers.length },
   ];
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 md:px-8">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-600">LawnFlow · Admin</p>
-          <h1 className="text-xl font-bold text-slate-900">ระบบจัดการแอดมิน</h1>
-        </div>
-        <Link href="/" className="text-sm font-medium text-brand-700 hover:underline">← กลับหน้าหลัก</Link>
-      </header>
+    <div>
+      <h1 className="mb-4 text-2xl font-bold text-slate-900">ระบบจัดการแอดมิน</h1>
 
-      <nav className="mb-6 flex gap-2 overflow-x-auto" role="tablist" aria-label="เมนูแอดมิน">
+      <nav className="mb-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" role="tablist" aria-label="เมนูแอดมิน">
         {tabs.map((item) => (
-          <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)} className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${tab === item.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:border-brand-500'}`}>
+          <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors sm:justify-start sm:px-4 ${tab === item.id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:border-brand-500'}`}>
             {item.label}
             {item.count !== undefined && <span className={`rounded-full px-2 py-0.5 text-xs ${tab === item.id ? 'bg-white/20 text-white' : item.id === 'workers' && item.count > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>{item.count}</span>}
           </button>
         ))}
       </nav>
 
-      {notice && (
-        <div role="status" className="mb-6 flex items-center justify-between rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-700">
-          <span>{notice}</span>
-          <button type="button" onClick={() => setNotice('')} className="ml-4 font-bold">ปิด</button>
-        </div>
-      )}
 
       {tab === 'overview' && (
         <section aria-label="ภาพรวมระบบ">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatTile label="งานใน Job Pool" value={`${sampleJobs.length} งาน`} hint={`วันนี้ ${sampleJobs.filter((job) => job.date === isoDateFromToday(0)).length} งาน`} />
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            <StatTile label="งานใน Job Pool" value={`${openJobs.length} งาน`} hint={`งานทั้งหมด ${activeJobs.length} · วันนี้ ${activeJobs.filter((job) => job.date === isoDateFromToday(0)).length} งาน`} />
             <StatTile label="มูลค่างานรวม" value={`฿${money(totalJobValue)}`} hint="ราคาที่ลูกค้าจ่าย" />
             <StatTile label={`รายได้ Platform (${platformFeePercent}%)`} value={`฿${money(platformRevenue)}`} hint={`ช่างได้รับสุทธิ ฿${money(totalJobValue - platformRevenue)}`} />
             <StatTile label="ช่างรอตรวจสอบ" value={`${pendingCount} คน`} hint={`ช่างทั้งหมด ${applications.length} คน · ลูกค้า ${customers.length} คน`} />
@@ -172,10 +137,14 @@ export default function AdminDashboard() {
               </>
             )}
           </div>
+          <div className="card mt-6 flex flex-wrap items-center justify-between gap-3 p-5 text-sm">
+            <span className="text-slate-600">ข้อมูลใน Supabase · ลูกค้า {customers.length} · ช่าง {applications.length} · งาน {allJobs.length}</span>
+            <button type="button" onClick={() => { if (window.confirm('ล้างข้อมูลการใช้งานทั้งหมดใน Supabase (การจอง งาน การเงิน รีวิว แจ้งเตือน) โดยเก็บบัญชีผู้ใช้ไว้?')) run(resetActivityData()); }} className="rounded-lg border border-rose-200 px-3 py-2 font-semibold text-rose-700 hover:bg-rose-50">ล้างข้อมูลการใช้งาน</button>
+          </div>
           {pendingCount > 0 && (
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
               <span className="text-amber-800">⏳ มีใบสมัครช่างรอตรวจสอบ {pendingCount} รายการ · ช่างยังรับงานไม่ได้จนกว่าจะอนุมัติ</span>
-              <button type="button" onClick={() => { setTab('workers'); setStatusFilter('pending_verification'); }} className="rounded-lg bg-slate-900 px-3 py-2 font-semibold text-white hover:bg-slate-700">ไปตรวจสอบ</button>
+              <button type="button" onClick={() => { setTab('workers'); setStatusFilter('pending_verification'); }} className="rounded-full bg-slate-900 px-3 py-2 font-semibold text-white hover:bg-slate-700">ไปตรวจสอบ</button>
             </div>
           )}
         </section>
@@ -187,7 +156,7 @@ export default function AdminDashboard() {
             <p className="text-sm text-slate-600">รายรับจากงานที่ทำเสร็จ · ค่า Platform {platformFeePercent}% ของราคาที่ลูกค้าจ่าย</p>
             <PeriodFilter value={revenuePeriod} options={periodOptions} onChange={setRevenuePeriod} />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <StatTile emphasis label="รายได้ Platform" value={`฿${money(revenue.platformFee)}`} hint={`จาก ${revenue.count} งาน`} />
             <StatTile label="มูลค่างานรวม (GMV)" value={`฿${money(revenue.gross)}`} hint="ราคาที่ลูกค้าจ่ายทั้งหมด" />
             <StatTile label="จ่ายให้ช่างแล้ว" value={`฿${money(revenue.released)}`} hint="ช่างกดโอนออกจาก Escrow แล้ว" />
@@ -196,7 +165,7 @@ export default function AdminDashboard() {
           <div className="mt-6">
             <ColumnChart title={revenuePeriod === 7 ? 'รายได้ Platform รายวัน' : 'รายได้ Platform รายสัปดาห์'} buckets={bucketize(revenueJobs, revenuePeriod, (job) => job.platformFee)} valueLabel="รายได้ Platform" />
           </div>
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="card overflow-hidden">
               <h2 className="border-b border-slate-200 p-4 font-semibold text-slate-900">รายรับแยกตามช่าง</h2>
               <div className="overflow-x-auto">
@@ -220,39 +189,41 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
-          <p className="mt-4 text-xs text-slate-500">ข้อมูลตัวอย่างย้อนหลัง 90 วันสำหรับสาธิต</p>
+          <p className="mt-4 text-xs text-slate-500">คำนวณจากงานที่ทำเสร็จจริงในฐานข้อมูล</p>
         </section>
       )}
+
+      {tab === 'areas' && <AreaReport customers={customers} mechanics={applications} />}
 
       {tab === 'workers' && (
         <section aria-label="ตรวจสอบบัญชีช่าง">
           <div className="mb-4 flex flex-wrap gap-2">
             {(['pending_verification', 'verified', 'rejected', 'all'] as const).map((status) => (
               <button key={status} type="button" aria-pressed={statusFilter === status} onClick={() => setStatusFilter(status)} className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${statusFilter === status ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-700 hover:border-brand-500'}`}>
-                {status === 'all' ? 'ทั้งหมด' : workerStatusStyles[status].label} ({status === 'all' ? applications.length : applications.filter((item) => item.profile.status === status).length})
+                {status === 'all' ? 'ทั้งหมด' : workerStatusStyles[status].label} ({status === 'all' ? applications.length : applications.filter((item) => item.status === status).length})
               </button>
             ))}
           </div>
           {visibleApplications.length ? (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               {visibleApplications.map((application) => {
-                const { profile } = application;
+                const profile = application;
                 const style = workerStatusStyles[profile.status];
                 return (
                   <article key={application.id} className="card p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h2 className="text-lg font-bold text-slate-900">{profile.firstName} {profile.lastName}</h2>
-                        <p className="text-xs text-slate-500">สมัครเมื่อ {formatDateTime(profile.submittedAt)}{application.source === 'local' && ' · สมัครจากเบราว์เซอร์นี้'}</p>
+                        <p className="text-xs text-slate-500">สมัครเมื่อ {formatDateTime(profile.submittedAt)}</p>
                       </div>
                       <span className={`badge shrink-0 ${style.className}`}><span aria-hidden="true" className="mr-1">{style.icon}</span>{style.label}</span>
                     </div>
                     <dl className="mt-4 space-y-1.5 text-sm">
-                      <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">เบอร์โทร</dt><dd className="text-slate-900">{profile.phone} <span className="text-emerald-700">✓ ยืนยัน OTP</span></dd></div>
-                      <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">บัญชีรับเงิน</dt><dd className="text-slate-900">{profile.bankName} · {maskAccount(profile.accountNumber)} · {profile.accountName}</dd></div>
+                      <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">เบอร์โทร</dt><dd className="text-slate-900">{formatPhone(profile.phone)} <span className="text-emerald-700">✓ ยืนยัน OTP</span></dd></div>
+                      <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">บัญชีรับเงิน</dt><dd className="text-slate-900">{profile.bankName} · {maskAccount(profile.accountLast4)} · {profile.accountName}</dd></div>
                       <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">ที่อยู่ฐาน</dt><dd className="text-slate-900">{formatAddress(profile.baseAddress)}{profile.baseAddress.location ? ' 📍' : ''}</dd></div>
                       <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">รัศมีให้บริการ</dt><dd className="text-slate-900">{profile.serviceRadiusKm} กม.</dd></div>
-                      <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">บัตรประชาชน</dt><dd className="text-slate-900">🪪 {profile.idCardFileName}</dd></div>
+                      <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">บัตรประชาชน</dt><dd className="text-slate-900">👷 {profile.idCardFileName}</dd></div>
                       {profile.status === 'rejected' && profile.rejectReason && <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">เหตุผล</dt><dd className="text-rose-700">{profile.rejectReason}</dd></div>}
                       {profile.reviewedAt && profile.status !== 'pending_verification' && <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">ตรวจสอบเมื่อ</dt><dd className="text-slate-900">{formatDateTime(profile.reviewedAt)}</dd></div>}
                     </dl>
@@ -263,12 +234,12 @@ export default function AdminDashboard() {
                         </label>
                         <div className="mt-2 flex gap-2">
                           <button type="button" onClick={() => review(application, 'rejected', rejectReason.trim())} disabled={!rejectReason.trim()} className="rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:bg-slate-300">ยืนยันไม่อนุมัติ</button>
-                          <button type="button" onClick={() => setRejectingId(null)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">ยกเลิก</button>
+                          <button type="button" onClick={() => setRejectingId(null)} className="rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">ยกเลิก</button>
                         </div>
                       </div>
                     ) : (
                       <div className="mt-4 flex gap-2">
-                        <button type="button" onClick={() => review(application, 'verified')} className="flex-1 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">✓ อนุมัติ</button>
+                        <button type="button" onClick={() => review(application, 'verified')} className="flex-1 rounded-full bg-brand-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-600">✓ อนุมัติ</button>
                         <button type="button" onClick={() => { setRejectingId(application.id); setRejectReason(''); }} className="flex-1 rounded-lg border border-rose-200 px-3 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50">✕ ไม่อนุมัติ</button>
                       </div>
                     ))}
@@ -297,11 +268,11 @@ export default function AdminDashboard() {
                 {visibleJobs.map((job) => (
                   <tr key={job.id} className="align-top">
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700">{formatRelativeThaiDate(job.date)}{job.time && ` ${job.time}`}</td>
-                    <td className="px-4 py-3"><p className="font-medium text-slate-900">{job.title}</p><p className="text-xs text-slate-500">{job.service} · {money(job.area)} ตารางวา · หญ้า{grassHeightLabels[job.grassHeight]}</p></td>
+                    <td className="px-4 py-3"><p className="font-medium text-slate-900">{job.title}</p><p className="text-xs text-slate-500">{job.service} · {money(job.area)} ตารางวา · {heightText(job.service, job.grassHeight)}</p></td>
                     <td className="px-4 py-3"><p className="text-slate-900">{job.firstName} {job.lastName}</p><p className="text-xs text-slate-500">{job.address.amphoe}, {job.address.province}</p></td>
                     <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-900">฿{money(job.price)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700">฿{money(netPayout(job.price))}</td>
-                    <td className="px-4 py-3"><span className="badge bg-amber-100 text-amber-800">{job.status}</span></td>
+                    <td className="px-4 py-3"><span className={`badge ${jobStatus(job).className}`}>{jobStatus(job).text}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -320,11 +291,11 @@ export default function AdminDashboard() {
                 <tr><th className="px-4 py-3 font-medium">ชื่อ-นามสกุล</th><th className="px-4 py-3 font-medium">ติดต่อ</th><th className="px-4 py-3 font-medium">ที่อยู่หลัก</th><th className="px-4 py-3 font-medium">สมัครเมื่อ</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {customers.map((customer, index) => (
-                  <tr key={`${customer.firstName}-${customer.lastName}-${index}`} className="align-top">
+                {customers.map((customer) => (
+                  <tr key={customer.id} className="align-top">
                     <td className="px-4 py-3 font-medium text-slate-900">{customer.firstName} {customer.lastName}</td>
-                    <td className="px-4 py-3 text-slate-700"><p>{customer.phone}</p><p className="text-xs text-slate-500">{customer.email}</p></td>
-                    <td className="px-4 py-3 text-slate-700"><span className="font-medium">{customer.addressLabel}</span> · {formatAddress(customer.address)}</td>
+                    <td className="px-4 py-3 text-slate-700"><p>{formatPhone(customer.phone)}</p><p className="text-xs text-slate-500">{customer.email}</p></td>
+                    <td className="px-4 py-3 text-slate-700">{(() => { const main = customer.addresses.find((item) => item.isDefault) ?? customer.addresses[0]; return main ? <><span className="font-medium">{main.label}</span> · {formatAddress(main.details)}</> : '-'; })()}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700">{formatDateTime(customer.createdAt)}</td>
                   </tr>
                 ))}
@@ -333,6 +304,6 @@ export default function AdminDashboard() {
           </div>
         </section>
       )}
-    </main>
+    </div>
   );
 }

@@ -1,9 +1,9 @@
 import { isoDateFromToday } from './date-input';
-import { netPayout, pricePerVisit, pricingOptions } from './pricing';
+import { netPayout } from './pricing';
 
-// งานที่ทำเสร็จแล้ว ใช้สำหรับรายงานรายรับ (ตัวอย่างหน้าจอ แทนข้อมูลจากเซิร์ฟเวอร์)
+// งานที่ทำเสร็จแล้ว ใช้สำหรับรายงานรายรับ (แปลงจากงานจริงในฐานข้อมูล)
 export type CompletedJob = {
-  id: number;
+  id: string;
   date: string; // วันที่ทำงานเสร็จ (yyyy-mm-dd)
   workerId: string;
   workerName: string;
@@ -19,63 +19,6 @@ export type CompletedJob = {
   payoutReleased: boolean;
 };
 
-// ช่างที่ใช้งานหน้านี้อยู่ (บัญชีตัวอย่าง)
-export const currentWorkerId = 'me';
-
-const workers = [
-  { id: currentWorkerId, name: 'คุณ (บัญชีนี้)' },
-  { id: 'w-prasert', name: 'ประเสริฐ ขยันดี' },
-  { id: 'w-wilai', name: 'วิไล สวนสวย' },
-];
-const customerNames = ['นุช สายสวน', 'มานะ ตั้งใจ', 'ฐิติมา ร่มเย็น', 'สมศรี ใบไม้', 'สมชาย ใจดี', 'กมล ทองดี', 'อรุณ แสงทอง', 'พรทิพย์ ใจงาม'];
-
-// สุ่มแบบกำหนดค่าเริ่มต้น เพื่อให้ตัวเลขรายงานเหมือนเดิมทุกครั้งที่เปิด
-function seeded(seed: number) {
-  let value = seed;
-  return () => {
-    value = (value * 1103515245 + 12345) % 2147483648;
-    return value / 2147483648;
-  };
-}
-
-function buildHistory(): CompletedJob[] {
-  const random = seeded(42);
-  const history: CompletedJob[] = [];
-  let id = 1000;
-  for (let daysAgo = 90; daysAgo >= 0; daysAgo -= 1) {
-    const jobsToday = random() < 0.55 ? 1 + Math.floor(random() * 2) : 0;
-    for (let index = 0; index < jobsToday; index += 1) {
-      const worker = workers[Math.floor(random() * workers.length)];
-      const service = pricingOptions[Math.floor(random() * pricingOptions.length)].name;
-      const area = 60 + Math.round(random() * 24) * 10;
-      const grassHeight = random() < 0.7 ? 0 : random() < 0.75 ? 1 : 2;
-      const price = pricePerVisit(service, area, grassHeight);
-      const net = netPayout(price);
-      const reviewed = random() < 0.65;
-      // ช่างโอนได้เมื่อรีวิวแล้ว หรือครบ 2 วัน — งานล่าสุดบางงานยังพักใน Escrow
-      const payoutReleased = daysAgo > 3 ? random() < 0.95 : reviewed && random() < 0.5;
-      history.push({
-        id: id++,
-        date: isoDateFromToday(-daysAgo),
-        workerId: worker.id,
-        workerName: worker.name,
-        customerName: customerNames[Math.floor(random() * customerNames.length)],
-        service,
-        area,
-        grassHeight,
-        price,
-        platformFee: price - net,
-        net,
-        reviewed,
-        rating: reviewed ? (id % 9 === 0 ? 3 : id % 4 === 0 ? 4 : 5) : undefined,
-        payoutReleased,
-      });
-    }
-  }
-  return history;
-}
-
-export const completedJobHistory = buildHistory();
 
 export type Period = 7 | 30 | 90;
 export const periodOptions: { days: Period; label: string }[] = [
@@ -130,10 +73,34 @@ export function groupBy<T extends string>(jobs: CompletedJob[], keyOf: (job: Com
   return [...groups.entries()].map(([key, items]) => ({ key, ...summarize(items) }));
 }
 
-// เรทติ้งของช่าง: ค่าเฉลี่ยจากรีวิวในประวัติ + รีวิวใหม่ที่ได้รับ
-export function workerRating(workerId: string, extraRatings: number[] = []) {
-  const workerJobs = completedJobHistory.filter((job) => job.workerId === workerId);
-  const ratings = [...workerJobs.flatMap((job) => (job.rating ? [job.rating] : [])), ...extraRatings];
-  const average = ratings.length ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : 0;
-  return { average: Math.round(average * 10) / 10, reviewCount: ratings.length, completedJobs: workerJobs.length + extraRatings.length };
+
+// แปลงงานที่ทำเสร็จจริงในระบบ (ฐานข้อมูลจำลอง) เป็นแถวรายงาน
+export function toCompletedJobs(
+  jobs: { id: string; mechanicId?: string; workStage?: string; completedAt?: string; cancelledAt?: string; service: string; area: number; grassHeight: number; price: number; firstName: string; lastName: string; payoutReleasedAt?: string }[],
+  reviews: { jobId: string; rating: number }[],
+  workerName: (mechanicId: string) => string,
+): CompletedJob[] {
+  return jobs
+    .filter((job) => job.mechanicId && job.workStage === 'done' && job.completedAt && !job.cancelledAt)
+    .map((job) => {
+      const at = new Date(job.completedAt!);
+      const review = reviews.find((item) => item.jobId === job.id);
+      const net = netPayout(job.price);
+      return {
+        id: job.id,
+        date: `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`,
+        workerId: job.mechanicId!,
+        workerName: workerName(job.mechanicId!),
+        customerName: `${job.firstName} ${job.lastName}`,
+        service: job.service,
+        area: job.area,
+        grassHeight: job.grassHeight,
+        price: job.price,
+        platformFee: job.price - net,
+        net,
+        reviewed: Boolean(review),
+        rating: review?.rating,
+        payoutReleased: Boolean(job.payoutReleasedAt),
+      };
+    });
 }

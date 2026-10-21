@@ -1,8 +1,8 @@
 export function StatTile({ label, value, hint, emphasis = false }: { label: string; value: string; hint?: string; emphasis?: boolean }) {
   return (
-    <div className={`card p-4 ${emphasis ? 'ring-2 ring-brand-500' : ''}`}>
-      <p className="text-sm text-slate-600">{label}</p>
-      <p className={`mt-1 font-bold text-slate-900 ${emphasis ? 'text-3xl' : 'text-2xl'}`}>{value}</p>
+    <div className={`card min-w-0 p-3 sm:p-4 ${emphasis ? 'ring-2 ring-brand-500' : ''}`}>
+      <p className="text-xs text-slate-600 sm:text-sm">{label}</p>
+      <p className={`mt-1 break-words font-bold text-slate-900 ${emphasis ? 'text-2xl sm:text-3xl' : 'text-xl sm:text-2xl'}`}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
     </div>
   );

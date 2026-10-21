@@ -1,24 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { Job, QuoteAdjustment } from './jobs';
+import { useState } from 'react';
+import { resizeImage } from '../_lib/image';
+import type { Inspection, Job, QuoteAdjustment } from '../_lib/types';
 import { debrisRatePerHour, grassHeightLabels, pricePerVisit } from './pricing';
 
 const money = (value: number) => new Intl.NumberFormat('th-TH').format(value);
 
-type Photo = { name: string; preview: string };
-type AiResult = { estimatedArea: number; grassHeight: number; debrisHours: number; completeness: number };
-
-// จำลองผลวิเคราะห์ภาพด้วย AI (PRD 4.2.5) — ผลคงที่ต่องาน เพื่อให้ทดสอบซ้ำได้
-function simulateAi(job: Job): AiResult {
-  const variance = ((job.id * 37) % 21) - 5; // -5% ถึง +15%
-  return {
-    estimatedArea: Math.max(1, Math.round(job.area * (1 + variance / 100))),
-    grassHeight: Math.min(2, job.grassHeight + (job.id % 2)),
-    debrisHours: job.id % 3 === 0 ? 0 : 1,
-    completeness: 92 + (job.id % 7),
-  };
-}
+type Photo = { url: string };
 
 function PhotoInput({ label, photo, onChange }: { label: string; photo: Photo | null; onChange: (photo: Photo) => void }) {
   return (
@@ -26,13 +15,13 @@ function PhotoInput({ label, photo, onChange }: { label: string; photo: Photo | 
       {label}
       {photo ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={photo.preview} alt={label} className="mt-2 h-32 w-full rounded-lg object-cover" />
+        <img src={photo.url} alt={label} className="mt-2 h-32 w-full rounded-lg object-cover" />
       ) : (
         <span className="mt-2 flex h-32 items-center justify-center rounded-lg bg-white text-xs font-normal text-slate-400">แตะเพื่อถ่าย/เลือกรูป</span>
       )}
       <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(event) => {
         const file = event.target.files?.[0];
-        if (file?.type.startsWith('image/')) onChange({ name: file.name, preview: URL.createObjectURL(file) });
+        if (file?.type.startsWith('image/')) resizeImage(file, 800).then((url) => onChange({ url })).catch(() => undefined);
       }} />
     </label>
   );
@@ -71,24 +60,29 @@ export function AdjustmentHistory({ adjustments }: { adjustments: QuoteAdjustmen
 export function InspectionPanel({
   job,
   adjustments,
+  inspection,
+  onAnalyze,
   onRequestAdjustment,
 }: {
   job: Job;
   adjustments: QuoteAdjustment[];
+  // ผลตรวจงานล่าสุดที่บันทึกในฐานข้อมูล
+  inspection?: Inspection;
+  onAnalyze: (beforeUrl: string, afterUrl: string) => Promise<void>;
   onRequestAdjustment: (request: { newAmount: number; newArea: number; newGrassHeight: number; newExtraCharges: number; reasons: string[]; note: string }) => void;
 }) {
-  const [before, setBefore] = useState<Photo | null>(null);
-  const [after, setAfter] = useState<Photo | null>(null);
-  const [aiStatus, setAiStatus] = useState<'idle' | 'analyzing' | 'done'>('idle');
-  const [aiResult, setAiResult] = useState<AiResult | null>(null);
+  const [before, setBefore] = useState<Photo | null>(inspection?.beforeUrl ? { url: inspection.beforeUrl } : null);
+  const [after, setAfter] = useState<Photo | null>(inspection?.afterUrl ? { url: inspection.afterUrl } : null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [changedPhotos, setChangedPhotos] = useState(false);
+  const aiResult = inspection && !changedPhotos ? { estimatedArea: inspection.estimatedArea, grassHeight: inspection.grassHeight, debrisHours: inspection.debrisHours, completeness: inspection.completeness } : null;
+  const aiStatus = analyzing ? 'analyzing' : aiResult ? 'done' : 'idle';
   const [formOpen, setFormOpen] = useState(false);
   const [actualArea, setActualArea] = useState(String(job.area));
   const [actualHeight, setActualHeight] = useState(job.grassHeight);
   const [debrisHours, setDebrisHours] = useState(0);
   const [note, setNote] = useState('');
 
-  useEffect(() => () => { if (before) URL.revokeObjectURL(before.preview); }, [before]);
-  useEffect(() => () => { if (after) URL.revokeObjectURL(after.preview); }, [after]);
 
   const pending = adjustments.some((adjustment) => adjustment.customerDecision === 'pending' || adjustment.settlement === 'awaiting_payment');
   const areaValue = Math.max(Math.round(Number(actualArea) || 0), 0);
@@ -104,12 +98,12 @@ export function InspectionPanel({
     debrisHours > 0 && `เคลียร์เศษวัสดุเพิ่ม ${debrisHours} ชม. × ฿${debrisRatePerHour} = ฿${money(debrisPrice)}`,
   ].filter((reason): reason is string => Boolean(reason));
 
-  function analyze() {
-    setAiStatus('analyzing');
-    window.setTimeout(() => {
-      setAiResult(simulateAi(job));
-      setAiStatus('done');
-    }, 1500);
+  async function analyze() {
+    if (!before || !after) return;
+    setAnalyzing(true);
+    await onAnalyze(before.url, after.url);
+    setChangedPhotos(false);
+    setAnalyzing(false);
   }
 
   function applyAiResult() {
@@ -132,8 +126,8 @@ export function InspectionPanel({
       <div>
         <p className="text-sm font-semibold text-slate-800">1. ภาพก่อน-หลังตัดหญ้า</p>
         <div className="mt-2 grid grid-cols-2 gap-3">
-          <PhotoInput label="ภาพก่อนทำงาน" photo={before} onChange={(photo) => { setBefore(photo); setAiStatus('idle'); setAiResult(null); }} />
-          <PhotoInput label="ภาพหลังทำงาน" photo={after} onChange={(photo) => { setAfter(photo); setAiStatus('idle'); setAiResult(null); }} />
+          <PhotoInput label="ภาพก่อนทำงาน" photo={before} onChange={(photo) => { setBefore(photo); setChangedPhotos(true); }} />
+          <PhotoInput label="ภาพหลังทำงาน" photo={after} onChange={(photo) => { setAfter(photo); setChangedPhotos(true); }} />
         </div>
       </div>
 
@@ -151,7 +145,7 @@ export function InspectionPanel({
             {!job.isMonthly && !pending && <button type="button" onClick={applyAiResult} className="mt-2 text-sm font-semibold text-brand-700 hover:underline">ใช้ค่าจาก AI ในคำขอปรับราคา →</button>}
           </div>
         ) : (
-          <button type="button" onClick={analyze} disabled={!before || !after || aiStatus === 'analyzing'} className="mt-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={analyze} disabled={!before || !after || aiStatus === 'analyzing'} className="mt-2 rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50">
             {aiStatus === 'analyzing' ? 'กำลังวิเคราะห์ภาพ...' : !before || !after ? 'แนบภาพก่อน-หลังเพื่อตรวจ' : '🤖 ตรวจภาพด้วย AI'}
           </button>
         )}
@@ -164,10 +158,10 @@ export function InspectionPanel({
         ) : pending ? (
           <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">ส่งคำขอปรับราคาแล้ว รอลูกค้าดำเนินการ · ราคายังคงเป็น ฿{money(job.price)} จนกว่าลูกค้าจะยืนยัน</p>
         ) : !formOpen ? (
-          <button type="button" onClick={() => { setActualArea(String(job.area)); setActualHeight(job.grassHeight); setDebrisHours(0); setFormOpen(true); }} className="mt-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700">ขอปรับราคา</button>
+          <button type="button" onClick={() => { setActualArea(String(job.area)); setActualHeight(job.grassHeight); setDebrisHours(0); setFormOpen(true); }} className="mt-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700">ขอปรับราคา</button>
         ) : (
           <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <label className="block text-sm font-medium text-slate-700">พื้นที่จริง (ตารางวา)<input type="number" min="1" value={actualArea} onChange={(event) => setActualArea(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
               <label className="block text-sm font-medium text-slate-700">ความสูงหญ้าจริง<select value={actualHeight} onChange={(event) => setActualHeight(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none">{grassHeightLabels.map((label, index) => <option key={label} value={index}>{label}</option>)}</select></label>
               <label className="block text-sm font-medium text-slate-700">เคลียร์เศษวัสดุ (ชม.)<input type="number" min="0" step="1" value={debrisHours} onChange={(event) => setDebrisHours(Math.max(0, Math.round(Number(event.target.value) || 0)))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" /><span className="mt-0.5 block text-xs font-normal text-slate-500">฿{debrisRatePerHour}/ชม.</span></label>
@@ -185,8 +179,8 @@ export function InspectionPanel({
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={submit} disabled={!reasons.length || difference === 0} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300">ส่งคำขอให้ลูกค้ายืนยัน</button>
-              <button type="button" onClick={() => setFormOpen(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">ยกเลิก</button>
+              <button type="button" onClick={submit} disabled={!reasons.length || difference === 0} className="rounded-full bg-brand-500 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300">ส่งคำขอให้ลูกค้ายืนยัน</button>
+              <button type="button" onClick={() => setFormOpen(false)} className="rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">ยกเลิก</button>
             </div>
             {(!reasons.length || difference === 0) && <p className="mt-2 text-xs text-slate-500">แก้ข้อมูลที่ต่างจากหน้างานจริงก่อนส่งคำขอ</p>}
           </div>
@@ -227,11 +221,11 @@ export function AdjustmentDecision({
       <ul className="mt-1 list-disc pl-5 text-sm text-slate-700">{adjustment.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
       {adjustment.note && <p className="mt-1 text-sm text-slate-600">หมายเหตุจากช่าง: {adjustment.note}</p>}
       {adjustment.settlement === 'awaiting_payment' ? (
-        <button type="button" onClick={onPayDifference} className="mt-4 w-full rounded-lg bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">จำลองสแกน QR ชำระส่วนต่าง ฿{money(difference)}</button>
+        <button type="button" onClick={onPayDifference} className="mt-4 w-full rounded-full bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-600">จำลองสแกน QR ชำระส่วนต่าง ฿{money(difference)}</button>
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => onDecide(false)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-rose-300 hover:text-rose-700">ปฏิเสธ</button>
-          <button type="button" onClick={() => onDecide(true)} className="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">ยอมรับ</button>
+          <button type="button" onClick={() => onDecide(false)} className="rounded-full border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-rose-300 hover:text-rose-700">ปฏิเสธ</button>
+          <button type="button" onClick={() => onDecide(true)} className="rounded-full bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-600">ยอมรับ</button>
         </div>
       )}
       {adjustment.customerDecision === 'pending' && <p className="mt-2 text-xs text-slate-500">ถ้าไม่ตอบภายใน 1 ชั่วโมง คำขอจะหมดอายุและราคาคงเดิม{onSimulateExpiry && <> · <button type="button" onClick={onSimulateExpiry} className="text-slate-400 underline hover:text-slate-600">(ทดสอบ) จำลองให้หมดอายุ</button></>}</p>}

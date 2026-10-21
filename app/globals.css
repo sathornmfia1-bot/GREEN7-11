@@ -3,13 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --background: #f5f9f6;
-  --foreground: #123126;
-  --panel: #ffffff;
-  --muted: #5f6f68;
-  --line: rgba(16, 42, 34, 0.08);
-  --brand: #2fbf71;
-  --brand-dark: #1ea860;
+  --background: #ffffff;
+  --foreground: #1f2937;
 }
 
 html {
@@ -19,27 +14,45 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background: linear-gradient(180deg, #f4faf5 0%, #eef7f0 100%);
+  background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 * {
   box-sizing: border-box;
 }
 
-.card {
-  @apply rounded-2xl border border-slate-200 bg-white shadow-soft;
+h1, h2, h3 {
+  @apply font-display;
 }
 
-.badge {
-  @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
-}
+@layer components {
+  .card {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-soft;
+  }
 
-.section-title {
-  @apply text-2xl font-bold text-slate-900 md:text-3xl;
-}
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
 
-.subtle-text {
-  @apply text-sm text-slate-600;
+  .section-title {
+    @apply font-display text-2xl font-semibold text-slate-900 md:text-3xl;
+  }
+
+  .subtle-text {
+    @apply text-sm text-slate-600;
+  }
+
+  /* ปุ่มทรงแคปซูล */
+  .btn-cta {
+    @apply inline-flex items-center justify-center rounded-full bg-accent-500 px-6 py-3 font-display text-sm font-semibold uppercase tracking-wide text-white shadow-soft transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none;
+  }
+
+  .btn-green {
+    @apply inline-flex items-center justify-center rounded-full bg-brand-500 px-5 py-2.5 font-display text-sm font-semibold text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center rounded-full border-2 border-brand-500 px-5 py-2 font-display text-sm font-semibold text-brand-600 transition-colors hover:bg-brand-50;
+  }
 }

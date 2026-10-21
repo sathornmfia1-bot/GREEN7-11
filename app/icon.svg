@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2fc077"/>
+      <stop offset="1" stop-color="#13965a"/>
+    </linearGradient>
+    <mask id="leaf-cut">
+      <path fill="#fff" d="M18.5 46.5C15.6 31.4 25.8 17.6 49.5 14.5c1.4 22.8-10.6 34.6-29.2 33.4z"/>
+      <path fill="none" stroke="#000" stroke-width="2.6" stroke-linecap="round" d="M20 45.2C26.5 36 33.5 28.4 43 21"/>
+    </mask>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="none" stroke="#fff" stroke-opacity=".14" stroke-width="1"/>
+  <rect width="64" height="64" fill="#fff" mask="url(#leaf-cut)"/>
+  <path fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" d="M20 45.2 15 50.8"/>
+</svg>
