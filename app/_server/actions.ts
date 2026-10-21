@@ -2,6 +2,7 @@
 
 import { AccessError, jobPhotosSelect, jobSelect, loadPricing, mechanicSelect, must, notify, requireUser, sb, toAdjustment, toJob, toJobPhotos, toMechanic, toNotification, type UserRow } from './core';
 import type { AddressDetails } from '../_components/address';
+import { hashSecret, lockMinutes, maxFailedAttempts, maxResetAttempts, passwordProblem, resetCodeMinutes, sixDigitCode, verifySecret } from './password';
 import { overallRating, reviewProblem, reviewStatuses, type ReviewInput } from '../_lib/review';
 import type { Role } from '../_lib/session';
 import type { CustomerAccount, Inspection, Result, ServiceAddress, Snapshot } from '../_lib/types';
@@ -175,11 +176,93 @@ async function inspectionsOf(jobIds: string[]): Promise<Inspection[]> {
 }
 
 // ---------------------------------------------------------------------------
-// เข้าสู่ระบบแบบจำลอง: ตรวจว่าเบอร์นี้เป็นบัญชีของ role นี้ (OTP ตรวจบนหน้าจอ)
+// เข้าสู่ระบบด้วยเบอร์โทร + รหัสผ่าน (hash เก็บในตาราง user_credentials)
 // ---------------------------------------------------------------------------
-export async function findLoginAccount(role: Role, phone: string): Promise<{ ok: boolean; userId?: string; message: string }> {
+export type LoginResult =
+  | { ok: true; userId: string }
+  | { ok: false; reason: 'invalid' | 'not_registered' | 'no_password' | 'locked' | 'not_ready' | 'error'; message: string };
+
+const credentialsNotReady = 'ระบบรหัสผ่านยังไม่พร้อม · แอดมินต้องรัน supabase/migrations/20261021000000_passwords.sql ใน Supabase SQL Editor';
+// ตารางยังไม่ถูกสร้าง (ยังไม่ได้รัน migration)
+const missingTable = (error: { code?: string } | null) => error?.code === 'PGRST205' || error?.code === '42P01';
+
+function roleLabelOf(role: Role) {
+  return { customer: 'ลูกค้า', mechanic: 'ช่างตัดหญ้า', admin: 'แอดมิน' }[role];
+}
+
+async function accountByPhone(role: Role, phone: string) {
   const { data } = await sb().from('users').select('id').eq('phone', digitsOf(phone)).eq('role', role).maybeSingle();
-  return data ? { ok: true, userId: data.id, message: '' } : { ok: false, message: 'not_registered' };
+  return data as { id: string } | null;
+}
+
+export async function loginWithPassword(role: Role, phone: string, password: string): Promise<LoginResult> {
+  try {
+    if (!/^0\d{9}$/.test(digitsOf(phone)) || !password) return { ok: false, reason: 'invalid', message: 'กรุณากรอกเบอร์โทร 10 หลักและรหัสผ่าน' };
+    const user = await accountByPhone(role, phone);
+    if (!user) return { ok: false, reason: 'not_registered', message: `เบอร์นี้ยังไม่ได้ลงทะเบียนเป็น${roleLabelOf(role)}` };
+    const { data: credential, error } = await sb().from('user_credentials').select('password_hash, failed_attempts, locked_until').eq('user_id', user.id).maybeSingle();
+    if (missingTable(error)) return { ok: false, reason: 'not_ready', message: credentialsNotReady };
+    if (error) throw error;
+    if (!credential) return { ok: false, reason: 'no_password', message: 'บัญชีนี้ยังไม่ได้ตั้งรหัสผ่าน กรุณากด “ลืมหรือยังไม่เคยตั้งรหัสผ่าน?”' };
+    if (credential.locked_until && Date.parse(credential.locked_until) > Date.now()) {
+      return { ok: false, reason: 'locked', message: `ใส่รหัสผ่านผิดหลายครั้ง กรุณารอ ${lockMinutes} นาที หรือตั้งรหัสผ่านใหม่` };
+    }
+    if (!(await verifySecret(password, credential.password_hash))) {
+      const failed = credential.failed_attempts + 1;
+      const locked = failed >= maxFailedAttempts;
+      await sb().from('user_credentials').update({ failed_attempts: locked ? 0 : failed, locked_until: locked ? new Date(Date.now() + lockMinutes * 60000).toISOString() : null }).eq('user_id', user.id);
+      return locked
+        ? { ok: false, reason: 'locked', message: `ใส่รหัสผ่านผิด ${maxFailedAttempts} ครั้ง บัญชีถูกล็อก ${lockMinutes} นาที หรือตั้งรหัสผ่านใหม่` }
+        : { ok: false, reason: 'invalid', message: `เบอร์โทรหรือรหัสผ่านไม่ถูกต้อง (ใส่ได้อีก ${maxFailedAttempts - failed} ครั้ง)` };
+    }
+    if (credential.failed_attempts || credential.locked_until) await sb().from('user_credentials').update({ failed_attempts: 0, locked_until: null }).eq('user_id', user.id);
+    return { ok: true, userId: user.id };
+  } catch (error) {
+    console.error(error);
+    return { ok: false, reason: 'error', message: 'เชื่อมต่อฐานข้อมูลไม่สำเร็จ กรุณาลองใหม่' };
+  }
+}
+
+async function savePassword(userId: string, password: string) {
+  const { error } = await sb().from('user_credentials').upsert({ user_id: userId, password_hash: await hashSecret(password), failed_attempts: 0, locked_until: null, updated_at: new Date().toISOString() });
+  if (missingTable(error)) throw new AccessError(credentialsNotReady);
+  if (error) throw error;
+}
+
+// ลืม/ยังไม่เคยตั้งรหัสผ่าน ขั้นที่ 1: สร้างรหัสยืนยัน 6 หลัก (เก็บเป็น hash)
+// โหมดทดสอบ: ยังไม่ส่ง SMS จริง จึงส่งรหัสกลับมาแสดงบนหน้าจอ (testCode) — เมื่อต่อ SMS แล้วให้ลบ testCode ออก
+export async function requestPasswordReset(role: Role, phone: string): Promise<Result & { testCode?: string; validMinutes?: number }> {
+  return guard(async () => {
+    const user = await accountByPhone(role, phone);
+    if (!user) return fail(`เบอร์นี้ยังไม่ได้ลงทะเบียนเป็น${roleLabelOf(role)}`);
+    const code = sixDigitCode();
+    const { error } = await sb().from('password_resets').upsert({ user_id: user.id, code_hash: await hashSecret(code), expires_at: new Date(Date.now() + resetCodeMinutes * 60000).toISOString(), attempts: 0, created_at: new Date().toISOString() });
+    if (missingTable(error)) return fail(credentialsNotReady);
+    if (error) throw error;
+    return { ...ok(`ส่งรหัสยืนยันแล้ว ใช้ได้ ${resetCodeMinutes} นาที`), testCode: code, validMinutes: resetCodeMinutes };
+  });
+}
+
+// ขั้นที่ 2: ตรวจรหัสยืนยัน แล้วตั้งรหัสผ่านใหม่ และเข้าสู่ระบบให้ทันที
+export async function resetPassword(role: Role, phone: string, code: string, password: string): Promise<Result & { userId?: string }> {
+  return guard(async () => {
+    const problem = passwordProblem(password);
+    if (problem) return fail(problem);
+    const user = await accountByPhone(role, phone);
+    if (!user) return fail(`เบอร์นี้ยังไม่ได้ลงทะเบียนเป็น${roleLabelOf(role)}`);
+    const { data: reset, error } = await sb().from('password_resets').select('code_hash, expires_at, attempts').eq('user_id', user.id).maybeSingle();
+    if (missingTable(error)) return fail(credentialsNotReady);
+    if (error) throw error;
+    if (!reset || Date.parse(reset.expires_at) < Date.now()) return fail('รหัสยืนยันหมดอายุ กรุณาขอรหัสใหม่');
+    if (reset.attempts >= maxResetAttempts) return fail('ใส่รหัสยืนยันผิดหลายครั้ง กรุณาขอรหัสใหม่');
+    if (!(await verifySecret(code, reset.code_hash))) {
+      await sb().from('password_resets').update({ attempts: reset.attempts + 1 }).eq('user_id', user.id);
+      return fail('รหัสยืนยันไม่ถูกต้อง');
+    }
+    await savePassword(user.id, password);
+    await sb().from('password_resets').delete().eq('user_id', user.id);
+    return { ...ok('ตั้งรหัสผ่านเรียบร้อย'), userId: user.id };
+  });
 }
 
 export async function listTestAccounts(role: Role) {
@@ -192,19 +275,22 @@ export async function listTestAccounts(role: Role) {
 // ---------------------------------------------------------------------------
 // ลงทะเบียน
 // ---------------------------------------------------------------------------
-async function createAccount(role: Role, user: { firstName: string; lastName: string; phone: string; email?: string }) {
+async function createAccount(role: Role, user: { firstName: string; lastName: string; phone: string; email?: string; password: string }) {
   const phone = digitsOf(user.phone);
   if (!/^0\d{9}$/.test(phone)) throw new Error('เบอร์โทรไม่ถูกต้อง');
+  const problem = passwordProblem(user.password);
+  if (problem) throw new AccessError(problem);
   const { data: existing } = await sb().from('users').select('role').eq('phone', phone).maybeSingle();
   if (existing) throw new AccessError(existing.role === role ? 'เบอร์นี้ลงทะเบียนแล้ว กรุณาเข้าสู่ระบบ' : 'เบอร์นี้ใช้ลงทะเบียนบัญชีประเภทอื่นแล้ว');
   // บัญชีใน Supabase Auth (ยืนยันเบอร์แล้ว) — ยังไม่ใช้ล็อกอินจริง เตรียมไว้เมื่อเปลี่ยนเป็น OTP จริง
   const { data: auth, error } = await sb().auth.admin.createUser({ phone: `+66${phone.slice(1)}`, phone_confirm: true, user_metadata: { role } });
   if (error || !auth.user) throw new Error(error?.message ?? 'สร้างบัญชีไม่สำเร็จ');
   must(await sb().from('users').insert({ id: auth.user.id, role, first_name: user.firstName.trim(), last_name: user.lastName.trim(), phone, phone_verified: true, email: user.email?.trim() || null }));
+  await savePassword(auth.user.id, user.password);
   return auth.user.id;
 }
 
-export async function registerCustomer(input: { firstName: string; lastName: string; phone: string; email: string; addressLabel: string; address: AddressDetails }) {
+export async function registerCustomer(input: { firstName: string; lastName: string; phone: string; email: string; password: string; addressLabel: string; address: AddressDetails }) {
   return guard(async () => {
     const id = await createAccount('customer', input);
     const address = must(await sb().from('service_addresses').insert(addressRow(id, input.addressLabel, input.address, true)).select('id').single());
@@ -213,7 +299,7 @@ export async function registerCustomer(input: { firstName: string; lastName: str
   });
 }
 
-export async function registerMechanic(input: { firstName: string; lastName: string; phone: string; bankName: string; accountNumber: string; accountName: string; serviceRadiusKm: number; baseAddress: AddressDetails; idCardFileName: string; photoDataUrl?: string }) {
+export async function registerMechanic(input: { firstName: string; lastName: string; phone: string; password: string; bankName: string; accountNumber: string; accountName: string; serviceRadiusKm: number; baseAddress: AddressDetails; idCardFileName: string; photoDataUrl?: string }) {
   return guard(async () => {
     const base = input.baseAddress;
     if (!base.location) throw new Error('กรุณาปักหมุดที่อยู่ฐาน');

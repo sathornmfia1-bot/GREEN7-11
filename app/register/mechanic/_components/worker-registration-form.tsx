@@ -10,15 +10,20 @@ import { FieldError, inputClass, isValidThaiMobile, labelClass, PhoneOtpField, p
 
 const radiusOptions = [5, 10, 20, 30, 50];
 
+const minPasswordLength = 8;
+
 type MechanicInput = { firstName: string; lastName: string; phone: string; bankName: string; accountNumber: string; accountName: string; serviceRadiusKm: number; baseAddress: AddressDetails; idCardFileName: string; photoDataUrl?: string };
 
-type FieldErrors = Partial<Record<'firstName' | 'lastName' | 'phone' | 'otp' | 'bankName' | 'accountNumber' | 'accountName' | 'baseAddress' | 'idCard' | 'photo' | 'terms', string>>;
+type FieldErrors = Partial<Record<'firstName' | 'lastName' | 'phone' | 'otp' | 'password' | 'confirmPassword' | 'bankName' | 'accountNumber' | 'accountName' | 'baseAddress' | 'idCard' | 'photo' | 'terms', string>>;
 
 export default function WorkerRegistrationForm() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [phoneVerified, setPhoneVerified] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
@@ -74,6 +79,8 @@ export default function WorkerRegistrationForm() {
     if (!lastName.trim()) nextErrors.lastName = 'กรุณากรอกนามสกุล';
     if (!isValidThaiMobile(phone)) nextErrors.phone = phoneErrorMessage;
     else if (!phoneVerified) nextErrors.otp = 'กรุณายืนยันเบอร์โทรด้วย OTP';
+    if (password.length < minPasswordLength) nextErrors.password = `รหัสผ่านต้องมีอย่างน้อย ${minPasswordLength} ตัวอักษร`;
+    if (confirmPassword !== password) nextErrors.confirmPassword = 'รหัสผ่านไม่ตรงกัน';
     if (!bankName) nextErrors.bankName = 'กรุณาเลือกธนาคาร';
     if (!/^\d{10,12}$/.test(accountNumber.replace(/\D/g, ''))) nextErrors.accountNumber = 'กรุณากรอกเลขบัญชี 10–12 หลัก';
     if (!accountName.trim()) nextErrors.accountName = 'กรุณากรอกชื่อบัญชี';
@@ -102,7 +109,7 @@ export default function WorkerRegistrationForm() {
     };
     // บันทึกใบสมัครลง Supabase (สถานะรอตรวจสอบ) แล้วเข้าสู่ระบบช่างให้ทันที
     setSaving(true);
-    const result = await registerMechanic(profile);
+    const result = await registerMechanic({ ...profile, password });
     setSaving(false);
     if (!result.ok || !('id' in result) || typeof result.id !== 'string') {
       setErrors({ phone: result.message });
@@ -160,8 +167,13 @@ export default function WorkerRegistrationForm() {
           </div>
         </Section>
 
-        <Section step={2} title="ยืนยันเบอร์โทร">
+        <Section step={2} title="เบอร์โทรและรหัสผ่าน">
           <PhoneOtpField phone={phone} onPhoneChange={setPhone} verified={phoneVerified} onVerifiedChange={(value) => { setPhoneVerified(value); if (value) setErrors((current) => ({ ...current, phone: undefined, otp: undefined })); }} phoneError={errors.phone} otpError={errors.otp} />
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className={labelClass}>รหัสผ่าน <span className="text-rose-700">*</span><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className={inputClass} /><span className="mt-1 block text-xs font-normal text-slate-500">ใช้เข้าสู่ระบบคู่กับเบอร์โทร · อย่างน้อย {minPasswordLength} ตัวอักษร</span><FieldError message={errors.password} /></label>
+            <label className={labelClass}>ยืนยันรหัสผ่าน <span className="text-rose-700">*</span><input type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" className={inputClass} /><FieldError message={errors.confirmPassword} /></label>
+          </div>
+          <label className="mt-3 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} className="accent-emerald-700" />แสดงรหัสผ่าน</label>
         </Section>
 
         <Section step={3} title="บัญชีธนาคารรับเงิน">

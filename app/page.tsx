@@ -161,7 +161,7 @@ export default function Home() {
       {/* เข้าสู่ระบบแยกตาม role */}
       <section id="login" className="mx-auto max-w-6xl scroll-mt-6 px-4 py-16 md:px-8">
         <h2 className="text-center font-display text-3xl font-semibold text-slate-900">เข้าสู่ระบบ</h2>
-        <p className="mt-3 text-center text-slate-600">เลือกประเภทผู้ใช้ แล้วเข้าสู่ระบบด้วยเบอร์โทรและรหัส OTP</p>
+        <p className="mt-3 text-center text-slate-600">เลือกประเภทผู้ใช้ แล้วเข้าสู่ระบบด้วยเบอร์โทรและรหัสผ่าน</p>
         <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-3">
           {roles.map((card) => (
             <section key={card.role} className="card flex flex-col p-6">
@@ -181,7 +181,7 @@ export default function Home() {
             <p><BrandName framed className="text-2xl" /></p>
             <p className="mt-3 text-sm">แพลตฟอร์มจ้างช่างตัดหญ้าและดูแลสวน</p>
           </div>
-          <p className="text-xs text-brand-200">โหมดทดสอบ: OTP เป็นรหัสจำลองที่แสดงบนหน้าจอ</p>
+          <p className="text-xs text-brand-200">โหมดทดสอบ: รหัสยืนยันทาง SMS เป็นรหัสจำลองที่แสดงบนหน้าจอ</p>
         </div>
       </footer>
     </div>

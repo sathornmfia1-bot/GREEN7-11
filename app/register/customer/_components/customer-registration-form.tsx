@@ -51,9 +51,9 @@ export default function CustomerRegistrationForm() {
     }
 
     const profile: Submitted = { firstName: firstName.trim(), lastName: lastName.trim(), phone: phoneDigitsOf(phone), email: email.trim(), addressLabel, address };
-    // บันทึกลง Supabase (ไม่เก็บรหัสผ่าน — ล็อกอินด้วยเบอร์โทร + OTP) แล้วเข้าสู่ระบบลูกค้าให้ทันที
+    // บันทึกลง Supabase (รหัสผ่านเก็บเป็น hash ฝั่งเซิร์ฟเวอร์ ใช้เข้าสู่ระบบด้วยเบอร์โทร + รหัสผ่าน) แล้วเข้าสู่ระบบลูกค้าให้ทันที
     setSaving(true);
-    const result = await registerCustomer({ firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone, email: profile.email, addressLabel, address });
+    const result = await registerCustomer({ firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone, email: profile.email, password, addressLabel, address });
     setSaving(false);
     if (!result.ok || !('id' in result) || typeof result.id !== 'string') {
       setErrors({ phone: result.message });
