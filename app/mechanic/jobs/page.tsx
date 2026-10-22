@@ -5,13 +5,16 @@ import Link from 'next/link';
 import { formatAddress, mapQuery } from '../../_components/address';
 import { formatThaiDate } from '../../_components/date-input';
 import { InspectionPanel } from '../../_components/inspection';
+import { CallButton } from '../../_components/call-button';
+import { PhotoGallery } from '../../_components/photo-gallery';
 import { ReviewSummary } from '../../_components/review';
+import { CompletionPhotoForm } from '../_components/completion-photos';
 import type { Job } from '../../_lib/types';
 import { heightText, netPayout } from '../../_components/pricing';
 import { useData, useMechanic, useRun } from '../../_components/role-shell';
 import { advanceWorkStage, cancelJobByMechanic, releasePayout, requestAdjustment, saveInspection, simulateEscrowWait } from '../../_server/actions';
 import {
-  canMechanicCancel, canReleasePayout, escrowReleaseDays, formatLocalDateTime, formatPhone, jobWhen, mechanicCancelDaysBefore,
+  canMechanicCancel, canReleasePayout, escrowReleaseDays, formatLocalDateTime, jobWhen, mechanicCancelDaysBefore,
   mechanicCancelDeadline, money, payoutAvailableAt, workStageActions, workStageLabels,
 } from '../../_lib/rules';
 
@@ -22,6 +25,7 @@ function MyJobCard({ job }: { job: Job }) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [advancing, setAdvancing] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const stage = job.workStage ?? 'matched';
   const action = stage === 'done' ? null : workStageActions[stage];
   const adjustments = db.adjustments.filter((item) => item.jobId === job.id);
@@ -46,18 +50,37 @@ function MyJobCard({ job }: { job: Job }) {
       <div className="mt-3 space-y-1.5 text-sm text-slate-700">
         <p>👤 {job.firstName} {job.lastName}</p>
         <p>📍 {formatAddress(job.address)}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <span>📞 <span className="font-semibold tabular-nums text-slate-900">{formatPhone(job.phone)}</span></span>
-          <a href={`tel:${job.phone}`} className="rounded-full bg-brand-500 px-3 py-1.5 font-semibold text-white hover:bg-brand-600">โทรหาลูกค้า</a>
-        </div>
+        <CallButton phone={job.phone} />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
         {stage === 'matched' && <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapQuery(job.address))}&travelmode=driving`} target="_blank" rel="noopener noreferrer" className="rounded-full border border-brand-600 bg-white px-3 py-1.5 font-semibold text-brand-700 hover:bg-brand-50">🧭 นำทางจากตำแหน่งปัจจุบัน</a>}
-        {action && <button type="button" onClick={async () => { setAdvancing(true); try { await run(advanceWorkStage(job.id)); } finally { setAdvancing(false); } }} disabled={blocked || advancing} aria-busy={advancing} className="rounded-full bg-brand-500 px-3 py-1.5 font-semibold text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300">{advancing ? 'กำลังบันทึก...' : action.label}</button>}
+        {action && !finishing && <button type="button" onClick={async () => {
+          // ทำงานเสร็จ → เปิดฟอร์มแนบรูปงานก่อน (ต้องมีอย่างน้อย 5 รูป)
+          if (stage === 'working') { setFinishing(true); return; }
+          setAdvancing(true);
+          try { await run(advanceWorkStage(job.id)); } finally { setAdvancing(false); }
+        }} disabled={blocked || advancing} aria-busy={advancing} className="rounded-full bg-brand-500 px-3 py-1.5 font-semibold text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300">{advancing ? 'กำลังบันทึก...' : action.label}</button>}
         {action && blocked && <span className="text-xs text-amber-700">รอลูกค้าตอบคำขอปรับราคา/ชำระส่วนต่างก่อน</span>}
+        {finishing && stage === 'working' && (
+          <CompletionPhotoForm
+            onCancel={() => setFinishing(false)}
+            onSubmit={async (photos) => {
+              const result = await run(advanceWorkStage(job.id, photos));
+              if (result.ok) setFinishing(false);
+              return result.ok;
+            }}
+          />
+        )}
         {stage === 'done' && (review ? <div className="w-full rounded-lg bg-amber-50 p-2"><ReviewSummary review={review} title="ลูกค้ารีวิว" /></div> : <span className="text-xs text-slate-600">แจ้งลูกค้าแล้ว · รอลูกค้ารีวิว</span>)}
       </div>
+
+      {stage === 'done' && Boolean(job.completionPhotos?.length) && (
+        <div className="mt-3">
+          <p className="mb-2 text-sm font-semibold text-slate-700">📸 รูปงานที่เสร็จแล้ว ({job.completionPhotos!.length} รูป)</p>
+          <PhotoGallery photos={job.completionPhotos!} label="รูปงานที่เสร็จแล้ว" />
+        </div>
+      )}
 
       {stage === 'done' && (() => {
         const releasable = canReleasePayout(job, Boolean(review));

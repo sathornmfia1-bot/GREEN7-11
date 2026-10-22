@@ -3,6 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
   // ซ่อนป้าย "Rendering..." ของโหมดพัฒนา (ข้อผิดพลาดตอนคอมไพล์/รันยังแสดงตามปกติ)
   devIndicators: false,
+  // รูปงานที่เสร็จแล้ว 5–10 รูปส่งผ่าน server action ครั้งเดียว (ค่าเริ่มต้นจำกัด 1MB)
+  experimental: {
+    serverActions: { bodySizeLimit: '4mb' },
+  },
   // อนุญาตให้มือถือในวง Wi-Fi เดียวกันเปิดหน้าเว็บขณะพัฒนา (npm run dev) ได้ — ไม่มีผลกับ production
   allowedDevOrigins: ['192.168.1.47', '192.168.*.*'],
   // เส้นทางเดิมก่อนแยกหน้าตาม role

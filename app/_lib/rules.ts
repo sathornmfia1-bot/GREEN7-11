@@ -36,6 +36,10 @@ export const workStageActions: Record<Exclude<WorkStage, 'done'>, { next: WorkSt
   working: { next: 'done', label: '✅ ทำงานเสร็จแล้ว', message: 'ช่างทำงานเสร็จแล้ว และขอให้คุณช่วยรีวิว' },
 };
 
+// รูปงานที่เสร็จแล้วที่ช่างต้องแนบตอนกด "ทำงานเสร็จแล้ว"
+export const minCompletionPhotos = 5;
+export const maxCompletionPhotos = 10;
+
 export const workStageLabels: Record<WorkStage, string> = { matched: 'จับคู่ช่างแล้ว', arrived: 'ถึงที่นัดหมายแล้ว', working: 'กำลังทำงาน', done: 'ทำงานเสร็จแล้ว' };
 
 export const customerSteps = ['รอช่างรับ', 'จับคู่ช่างแล้ว', 'กำลังทำงาน', 'รอตรวจรับ', 'เสร็จสมบูรณ์'];

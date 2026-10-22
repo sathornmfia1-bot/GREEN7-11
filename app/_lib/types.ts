@@ -25,6 +25,8 @@ export type Job = {
   priceNote?: string;
   extraCharges?: number;
   photos?: string[];
+  // รูปงานที่เสร็จแล้ว (ช่างแนบตอนกด "ทำงานเสร็จแล้ว") · โหลดแยกจากข้อมูลหลักเหมือน photos
+  completionPhotos?: string[];
   workStage?: WorkStage;
   completedAt?: string;
   payoutReleasedAt?: string;

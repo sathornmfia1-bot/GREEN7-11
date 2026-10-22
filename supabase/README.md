@@ -15,6 +15,7 @@
    - `migrations/20261018000000_app_notification_types.sql` — ประเภทแจ้งเตือน “ชำระเงินสำเร็จ” และ “ได้รับรีวิว”
    - `migrations/20261020000000_review_topics.sql` — รีวิวแยกหัวข้อ (สถานะงาน · ดาว 3 หัวข้อ · ปัญหาที่พบ)
    - `migrations/20261021000000_passwords.sql` — เข้าสู่ระบบด้วยเบอร์โทร + รหัสผ่าน (เก็บเฉพาะ hash) และรหัสยืนยันสำหรับตั้งรหัสผ่านใหม่
+   - `migrations/20261022000000_completion_photos.sql` — รูปงานที่เสร็จแล้ว (ช่างแนบอย่างน้อย 5 รูป ลูกค้าดูประกอบการรีวิว)
 2. คัดลอก `.env.local.example` เป็น `.env.local` แล้วใส่ URL, anon key และ **service_role key**
 3. สร้างบัญชีทดสอบ: `node scripts/seed-test-accounts.mjs` (รันซ้ำได้)
 4. รีสตาร์ท `npm run dev`

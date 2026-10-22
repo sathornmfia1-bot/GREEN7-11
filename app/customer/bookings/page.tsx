@@ -6,6 +6,7 @@ import { formatAddress } from '../../_components/address';
 import { formatThaiDate } from '../../_components/date-input';
 import { thaiBanks } from '../../_components/form-ui';
 import { AdjustmentDecision } from '../../_components/inspection';
+import { PhotoGallery } from '../../_components/photo-gallery';
 import { ReviewForm, ReviewSummary } from '../../_components/review';
 import type { ReviewInput } from '../../_lib/review';
 import type { Job } from '../../_lib/types';
@@ -94,6 +95,12 @@ function BookingCard({ job }: { job: Job }) {
 
       {stage === 'done' && job.mechanicId && (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
+          {Boolean(job.completionPhotos?.length) && (
+            <div className="mb-4 border-b border-amber-200 pb-4">
+              <p className="mb-2 font-semibold text-slate-800">📸 รูปงานที่เสร็จแล้วจากช่าง ({job.completionPhotos!.length} รูป){!review && ' · ดูรูปก่อนรีวิวได้'}</p>
+              <PhotoGallery photos={job.completionPhotos!} label="รูปงานที่เสร็จแล้ว" />
+            </div>
+          )}
           {review ? (
             <ReviewSummary review={review} title="รีวิวแล้ว" />
           ) : reviewOpen ? (

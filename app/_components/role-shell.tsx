@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { loadJobPhotos, loadSnapshot } from '../_server/actions';
+import { loadJobPhotos, loadSnapshot, type JobPhotoSet } from '../_server/actions';
 import { Logo } from './brand';
 import { clearSession, getSessionUserId, roleLabels, type Role } from '../_lib/session';
 import type { AdminAccount, CustomerAccount, MechanicAccount, Result, Snapshot } from '../_lib/types';
@@ -56,8 +56,9 @@ export function RoleShell({ role, nav, children }: { role: Role; nav: NavItem[];
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   // ใช้เฉพาะผลของคำขอล่าสุด (โหลดซ้อนกันได้ เช่น ระหว่างอัปเดตอัตโนมัติกับหลังกดปุ่ม)
   const latestRequest = useRef(0);
-  // รูปสนามหญ้าแนบตอนจองครั้งเดียวไม่เปลี่ยน → เก็บไว้ตามรหัสงาน ไม่ต้องโหลดซ้ำทุก 5 วินาที
-  const photoCache = useRef(new Map<string, string[]>());
+  // รูปสนามหญ้า (แนบตอนจอง) และรูปงานที่เสร็จแล้ว (แนบตอนเสร็จงาน) ไม่เปลี่ยนหลังแนบ → เก็บไว้ ไม่ต้องโหลดซ้ำทุก 5 วินาที
+  // คีย์รวมสถานะ "เสร็จแล้ว" ด้วย เมื่องานเปลี่ยนเป็นเสร็จจะโหลดใหม่หนึ่งครั้งเพื่อเอารูปงานที่เสร็จแล้ว
+  const photoCache = useRef(new Map<string, JobPhotoSet>());
 
   const refresh = useCallback(async () => {
     const requestId = ++latestRequest.current;
@@ -65,13 +66,14 @@ export function RoleShell({ role, nav, children }: { role: Role; nav: NavItem[];
       const result = await loadSnapshot(role);
       if (requestId !== latestRequest.current) return;
       if (result.ok) {
-        const withPhotos = (snapshot: Snapshot) => ({ ...snapshot, jobs: snapshot.jobs.map((job) => ({ ...job, photos: photoCache.current.get(job.id) ?? [] })) });
+        const cacheKey = (job: Snapshot['jobs'][number]) => `${job.id}|${job.workStage === 'done' ? 'done' : 'open'}`;
+        const withPhotos = (snapshot: Snapshot) => ({ ...snapshot, jobs: snapshot.jobs.map((job) => { const cached = photoCache.current.get(cacheKey(job)); return { ...job, photos: cached?.photos ?? [], completionPhotos: cached?.completion ?? [] }; }) });
         // แสดงข้อมูลทันที แล้วค่อยเติมรูปของงานที่ยังไม่เคยโหลด
         setData(withPhotos(result.data));
-        const missing = result.data.jobs.filter((job) => !photoCache.current.has(job.id)).map((job) => job.id);
+        const missing = result.data.jobs.filter((job) => !photoCache.current.has(cacheKey(job)));
         if (missing.length) {
-          const photos = await loadJobPhotos(role, missing);
-          if (photos) missing.forEach((id) => photoCache.current.set(id, photos[id] ?? []));
+          const photos = await loadJobPhotos(role, missing.map((job) => job.id));
+          if (photos) missing.forEach((job) => photoCache.current.set(cacheKey(job), photos[job.id] ?? { photos: [], completion: [] }));
           if (photos && requestId === latestRequest.current) setData(withPhotos(result.data));
         }
         setLoadError('');

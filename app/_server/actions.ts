@@ -4,6 +4,7 @@ import { AccessError, jobPhotosSelect, jobSelect, loadPricing, mechanicSelect, m
 import type { AddressDetails } from '../_components/address';
 import { hashSecret, lockMinutes, maxFailedAttempts, maxResetAttempts, passwordProblem, resetCodeMinutes, sixDigitCode, verifySecret } from './password';
 import { overallRating, reviewProblem, reviewStatuses, type ReviewInput } from '../_lib/review';
+import { maxCompletionPhotos, minCompletionPhotos } from '../_lib/rules';
 import type { Role } from '../_lib/session';
 import type { CustomerAccount, Inspection, Result, ServiceAddress, Snapshot } from '../_lib/types';
 
@@ -33,6 +34,8 @@ function daysFromToday(isoDate: string) {
 }
 const hex = (value: string) => `\\x${Buffer.from(value, 'utf8').toString('hex')}`;
 const digitsOf = (value: string) => value.replace(/\D/g, '');
+// ตารางยังไม่ถูกสร้าง (ยังไม่ได้รัน migration)
+const missingTable = (error: { code?: string } | null) => error?.code === 'PGRST205' || error?.code === '42P01';
 
 // ---------------------------------------------------------------------------
 // ข้อมูลสำหรับหน้าเว็บของแต่ละ role (กรองตามสิทธิ์)
@@ -52,7 +55,9 @@ export async function loadSnapshot(role: Role): Promise<{ ok: true; data: Snapsh
 }
 
 // รูปสนามหญ้าของงาน (ข้อมูลใหญ่) โหลดแยกเฉพาะงานที่ระบุ ด้วยสิทธิ์เดียวกับ loadSnapshot · null = โหลดไม่สำเร็จ
-export async function loadJobPhotos(role: Role, jobIds: string[]): Promise<Record<string, string[]> | null> {
+export type JobPhotoSet = { photos: string[]; completion: string[] };
+
+export async function loadJobPhotos(role: Role, jobIds: string[]): Promise<Record<string, JobPhotoSet> | null> {
   const ids = jobIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 200);
   if (!ids.length) return {};
   try {
@@ -61,7 +66,15 @@ export async function loadJobPhotos(role: Role, jobIds: string[]): Promise<Recor
     if (role === 'customer') query = query.eq('customer_id', me.id);
     if (role === 'mechanic') query = query.or(`mechanic_id.eq.${me.id},and(status.eq.open,cancelled_at.is.null)`);
     const rows = must(await query) as { id: string }[];
-    return Object.fromEntries(rows.map((row) => [row.id, toJobPhotos(row)]));
+    // รูปงานที่เสร็จแล้ว เฉพาะงานที่ผ่านการตรวจสิทธิ์ด้านบน · ยังไม่ได้รัน migration → ถือว่าไม่มีรูป
+    const allowed = rows.map((row) => row.id);
+    const { data: completion, error } = allowed.length
+      ? await sb().from('job_completion_photos').select('job_id, url, sort_order').in('job_id', allowed).order('sort_order')
+      : { data: [], error: null };
+    if (error && !missingTable(error)) throw error;
+    const byJob = new Map<string, string[]>();
+    (completion ?? []).forEach((photo: { job_id: string; url: string }) => byJob.set(photo.job_id, [...(byJob.get(photo.job_id) ?? []), photo.url]));
+    return Object.fromEntries(rows.map((row) => [row.id, { photos: toJobPhotos(row), completion: byJob.get(row.id) ?? [] }]));
   } catch (error) {
     console.error(error);
     return null;
@@ -183,8 +196,6 @@ export type LoginResult =
   | { ok: false; reason: 'invalid' | 'not_registered' | 'no_password' | 'locked' | 'not_ready' | 'error'; message: string };
 
 const credentialsNotReady = 'ระบบรหัสผ่านยังไม่พร้อม · แอดมินต้องรัน supabase/migrations/20261021000000_passwords.sql ใน Supabase SQL Editor';
-// ตารางยังไม่ถูกสร้าง (ยังไม่ได้รัน migration)
-const missingTable = (error: { code?: string } | null) => error?.code === 'PGRST205' || error?.code === '42P01';
 
 function roleLabelOf(role: Role) {
   return { customer: 'ลูกค้า', mechanic: 'ช่างตัดหญ้า', admin: 'แอดมิน' }[role];
@@ -603,7 +614,18 @@ const nextStage = {
   working: { status: 'completed', stamp: 'completed_at', type: 'work_completed_review_request', message: 'ช่างทำงานเสร็จแล้ว และขอให้คุณช่วยรีวิว' },
 } as const;
 
-export async function advanceWorkStage(jobId: string) {
+// รูปงานที่เสร็จแล้ว: JPEG/PNG/WebP แบบ data URL ที่ย่อแล้ว · ไม่เกิน ~450KB ต่อรูป
+const photoPattern = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+const maxPhotoChars = 600_000;
+
+function completionPhotoProblem(photos: string[] | undefined): string | null {
+  if (!photos || photos.length < minCompletionPhotos) return `กรุณาแนบรูปงานที่เสร็จแล้วอย่างน้อย ${minCompletionPhotos} รูป`;
+  if (photos.length > maxCompletionPhotos) return `แนบรูปได้ไม่เกิน ${maxCompletionPhotos} รูป`;
+  if (photos.some((photo) => typeof photo !== 'string' || photo.length > maxPhotoChars || !photoPattern.test(photo))) return 'ไฟล์รูปไม่ถูกต้องหรือใหญ่เกินไป กรุณาถ่ายใหม่';
+  return null;
+}
+
+export async function advanceWorkStage(jobId: string, completionPhotos?: string[]) {
   return guard(async () => {
     const me = await requireUser('mechanic');
     const job = await myJob(me, jobId);
@@ -612,8 +634,25 @@ export async function advanceWorkStage(jobId: string) {
     if (!step) return fail('งานนี้เสร็จแล้ว');
     // ราคาสูงขึ้นและลูกค้ายังไม่ชำระส่วนต่าง → ห้ามทำงานต่อ (PRD 5.3)
     if (await hasOpenAdjustment(jobId)) return fail('รอลูกค้าตอบคำขอปรับราคา/ชำระส่วนต่างก่อน');
+    const finishing = step.status === 'completed';
+    if (finishing) {
+      // ทำงานเสร็จ → ต้องมีรูปงานที่เสร็จแล้วอย่างน้อย 5 รูป ให้ลูกค้าดูประกอบการรีวิว
+      const problem = completionPhotoProblem(completionPhotos);
+      if (problem) return fail(problem);
+      // ลบรูปที่ค้างจากการกดครั้งก่อนที่ไม่สำเร็จ แล้วบันทึกชุดใหม่
+      const cleared = await sb().from('job_completion_photos').delete().eq('job_id', jobId);
+      if (missingTable(cleared.error)) return fail('ระบบรูปงานยังไม่พร้อม · แอดมินต้องรัน supabase/migrations/20261022000000_completion_photos.sql ใน Supabase SQL Editor');
+      if (cleared.error) throw cleared.error;
+      must(await sb().from('job_completion_photos').insert(completionPhotos!.map((url, index) => ({ job_id: jobId, mechanic_id: me.id, url, sort_order: index }))));
+    }
     const now = new Date();
-    must(await sb().from('jobs').update({ status: step.status, [step.stamp]: now.toISOString() }).eq('id', jobId).eq('status', job.status));
+    const updated = await sb().from('jobs').update({ status: step.status, [step.stamp]: now.toISOString() }).eq('id', jobId).eq('status', job.status).select('id');
+    if (updated.error || !updated.data?.length) {
+      // สถานะงานเปลี่ยนไปแล้ว (เช่น กดซ้ำจากอีกเครื่อง) → ไม่เก็บรูปที่เพิ่งบันทึก
+      if (finishing) await sb().from('job_completion_photos').delete().eq('job_id', jobId);
+      if (updated.error) throw updated.error;
+      return fail('สถานะงานเปลี่ยนไปแล้ว กรุณารีเฟรชหน้า');
+    }
     if (step.status === 'completed') {
       // เงินเข้า Escrow: ช่างโอนได้เมื่อลูกค้ารีวิว หรือครบ 2 วัน
       const pricing = await loadPricing();
@@ -623,7 +662,7 @@ export async function advanceWorkStage(jobId: string) {
       const profile = must(await sb().from('mechanic_profiles').select('completed_jobs_count').eq('user_id', me.id).single());
       must(await sb().from('mechanic_profiles').update({ completed_jobs_count: Number(profile.completed_jobs_count) + 1 }).eq('user_id', me.id));
     }
-    await notify(job.customer_id, step.type, step.message, jobId);
+    await notify(job.customer_id, step.type, finishing ? `${step.message} · ดูรูปงาน ${completionPhotos!.length} รูปก่อนรีวิวได้` : step.message, jobId);
     return ok(`แจ้งลูกค้าแล้ว: “${step.message}”`);
   });
 }
