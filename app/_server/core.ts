@@ -10,7 +10,9 @@ let adminClient: SupabaseClient | null = null;
 export function sb(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('ยังไม่ได้ตั้งค่า NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY ใน .env.local');
+  // บอกชื่อตัวแปรที่ขาดให้ชัด (ไม่แสดงค่า) — บนเครื่องตั้งใน .env.local · บน Vercel ตั้งใน Settings → Environment Variables แล้ว Redeploy
+  const missing = [!url && 'NEXT_PUBLIC_SUPABASE_URL', !key && 'SUPABASE_SERVICE_ROLE_KEY'].filter(Boolean).join(', ');
+  if (!url || !key) throw new Error(`ไม่พบตัวแปร ${missing} (บนเครื่อง: .env.local · บน Vercel: Settings → Environment Variables → ติ๊ก Production แล้ว Redeploy)`);
   adminClient ??= createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   return adminClient;
 }
