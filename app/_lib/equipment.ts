@@ -5,6 +5,10 @@ export const equipmentOptions = [
   { value: 'battery_cutter', label: 'เครื่องตัดหญ้าแบตเตอรี่' },
   { value: 'riding_mower', label: 'รถตัดหญ้าแบบนั่งขับ' },
   { value: 'leaf_blower', label: 'เครื่องเป่าใบไม้' },
+  { value: 'pruning_shears', label: 'กรรไกรตัดแต่งกิ่ง' },
+  { value: 'hedge_shears', label: 'กรรไกรด้ามยาว เล็มพุ่ม' },
+  { value: 'pole_pruner', label: 'กรรไกรกระตุกกิ่ง' },
+  { value: 'hedge_trimmer', label: 'เครื่องตัดแต่งพุ่มไฟฟ้า' },
 ] as const;
 
 export type Equipment = (typeof equipmentOptions)[number]['value'];

@@ -102,6 +102,67 @@ const art: Record<Equipment, React.ReactNode> = {
       <path d="M47 45h4" stroke={darkGreen} strokeWidth="2" strokeLinecap="round" />
     </>
   ),
+  pruning_shears: (
+    <>
+      {/* กรรไกรตัดแต่งกิ่ง (มือเดียว): ใบมีดโค้งด้านบน ด้ามจับสีแดง-ส้ม 2 ข้าง สปริงตรงกลาง */}
+      <path d="M30 30c-4-8-3-17 4-24 3 7 3 15-1 22z" fill={steel} stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M33 30c3-7 9-11 16-11-2 6-8 11-14 13z" fill={metal} stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
+      <circle cx="32" cy="31" r="2.6" fill={ink} />
+      <path d="M31 33 17 56c-1 2-4 2-5 0l13-25" fill={red} stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M33 33 42 58c1 2 4 2 5 0l-9-27" fill={orange} stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M28 40c3-2 6-2 8 1" stroke={metal} strokeWidth="1.6" strokeLinecap="round" />
+      {/* กิ่งไม้ที่ตัด */}
+      <path d="M44 8 54 4M50 6l3 5" stroke={darkGreen} strokeWidth="2" strokeLinecap="round" />
+      <path d="M53 11c2-3 6-3 7 0-2 2-5 3-7 0z" fill={green} />
+    </>
+  ),
+  hedge_shears: (
+    <>
+      {/* กรรไกรด้ามยาวเล็มพุ่ม: ใบมีดตรงยาว 2 ใบไขว้กัน ด้ามไม้ยาว ปลายด้ามสีเขียว */}
+      <path d="M31 30 12 4l3-1 19 25z" fill={steel} stroke={ink} strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M33 30 52 4l-3-1-19 25z" fill={metal} stroke={ink} strokeWidth="1.4" strokeLinejoin="round" />
+      <circle cx="32" cy="30" r="2.6" fill={ink} />
+      <path d="M31 32 16 56" stroke="#a16207" strokeWidth="4" strokeLinecap="round" />
+      <path d="M33 32 48 56" stroke="#a16207" strokeWidth="4" strokeLinecap="round" />
+      <path d="M18.5 52 14 59M45.5 52 50 59" stroke={green} strokeWidth="5" strokeLinecap="round" />
+      {/* พุ่มไม้ที่เล็มเรียบ (ทรงพุ่มกลม มีใบ) */}
+      <path d="M1 28c0-6 3-10 6-10s6 4 6 10z" fill={green} />
+      <path d="M51 28c0-6 3-10 6-10s6 4 6 10z" fill={green} />
+      <path d="M4 23h2M8 21h2M54 23h2M58 21h2" stroke={darkGreen} strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M7 28v3M57 28v3" stroke="#a16207" strokeWidth="1.6" strokeLinecap="round" />
+    </>
+  ),
+  pole_pruner: (
+    <>
+      {/* กรรไกรกระตุกกิ่ง: ด้ามยาว หัวมีดตะขอด้านบน เชือกกระตุกห้อยลงมาพร้อมมือจับ */}
+      <path d="M44 10c5 0 9 4 9 9-3-2-6-3-9-2z" fill={steel} stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M44 17 51 9" stroke={ink} strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M42 17 14 60" stroke="#a16207" strokeWidth="3.4" strokeLinecap="round" />
+      <path d="M42 17 14 60" stroke="#ca8a04" strokeWidth="1.2" strokeLinecap="round" />
+      {/* เชือกและมือจับ */}
+      <path d="M51 10c4 6 4 18 0 30" stroke={orange} strokeWidth="1.6" strokeLinecap="round" fill="none" strokeDasharray="0" />
+      <rect x="47" y="40" width="8" height="5" rx="2" fill={red} stroke={ink} strokeWidth="1.2" />
+      {/* กิ่งไม้สูง */}
+      <path d="M30 6h28" stroke={darkGreen} strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M33 6c1-4 5-5 7-2-2 2-5 3-7 2zM56 6c-1-4-5-5-7-2 2 2 5 3 7 2z" fill={green} />
+    </>
+  ),
+  hedge_trimmer: (
+    <>
+      {/* เครื่องตัดแต่งพุ่มไฟฟ้า: ใบมีดยาวมีฟันเลื่อย ตัวเครื่องสีเขียว มือจับหน้า-หลัง สายไฟ */}
+      <rect x="3" y="27" width="31" height="6" rx="1.5" fill={steel} stroke={ink} strokeWidth="1.4" />
+      <path d="M5 27v-3M9 27v-3M13 27v-3M17 27v-3M21 27v-3M25 27v-3M29 27v-3M5 33v3M9 33v3M13 33v3M17 33v3M21 33v3M25 33v3M29 33v3" stroke={ink} strokeWidth="1.6" strokeLinecap="round" />
+      {/* ตัวเครื่องยาวแบน */}
+      <rect x="31" y="25" width="23" height="11" rx="4.5" fill={green} stroke={ink} strokeWidth="1.5" />
+      <path d="M43 27.5l-3 3.5h3l-2 3.5 5-4.5h-3l2-2.5z" fill="#fff" />
+      {/* มือจับหน้าแบบโค้งคร่อมด้านหน้า และมือจับหลังแบบห่วงปิด */}
+      <path d="M31 31c-2-9 1-15 6-15s7 4 6 9" stroke={ink} strokeWidth="2.4" strokeLinecap="round" fill="none" />
+      <path d="M54 27h3c3 0 5 2 5 4s-2 5-5 5h-3" stroke={ink} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d="M57 29.5v4" stroke={orange} strokeWidth="2" strokeLinecap="round" />
+      {/* สายไฟ */}
+      <path d="M60 36c0 9-7 12-13 14s-9 6-7 10" stroke={ink} strokeWidth="1.6" strokeLinecap="round" fill="none" />
+    </>
+  ),
 };
 
 export function EquipmentArt({ type, className = 'h-12 w-12' }: { type: Equipment; className?: string }) {
