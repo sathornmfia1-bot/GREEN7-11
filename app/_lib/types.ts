@@ -113,6 +113,11 @@ export type MechanicAccount = {
   accountLast4: string;
   accountName: string;
   serviceRadiusKm: number;
+  // เครื่องมือที่ใช้ (ค่าใน app/_lib/equipment.ts) · ว่างถ้ายังไม่ได้รัน migration หรือสมัครก่อนมีช่องนี้
+  equipment: string[];
+  // ชื่อองค์กร (ไม่บังคับ) และจำนวนสมาชิกช่างตัดหญ้า (รวมตัวผู้สมัคร)
+  organizationName?: string;
+  teamSize?: number;
   baseAddress: AddressDetails;
   idCardFileName: string;
   status: MechanicStatus;

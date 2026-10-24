@@ -16,6 +16,8 @@
    - `migrations/20261020000000_review_topics.sql` — รีวิวแยกหัวข้อ (สถานะงาน · ดาว 3 หัวข้อ · ปัญหาที่พบ)
    - `migrations/20261021000000_passwords.sql` — เข้าสู่ระบบด้วยเบอร์โทร + รหัสผ่าน (เก็บเฉพาะ hash) และรหัสยืนยันสำหรับตั้งรหัสผ่านใหม่
    - `migrations/20261022000000_completion_photos.sql` — รูปงานที่เสร็จแล้ว (ช่างแนบอย่างน้อย 5 รูป ลูกค้าดูประกอบการรีวิว)
+   - `migrations/20261024000000_mechanic_equipment.sql` — เครื่องมือที่ช่างใช้ (เลือกได้หลายอย่างตอนสมัคร)
+   - `migrations/20261024010000_mechanic_organization.sql` — ชื่อองค์กร (ไม่บังคับ) และจำนวนสมาชิกช่างตัดหญ้า
 2. คัดลอก `.env.local.example` เป็น `.env.local` แล้วใส่ URL, anon key และ **service_role key**
 3. สร้างบัญชีทดสอบ: `node scripts/seed-test-accounts.mjs` (รันซ้ำได้)
 4. รีสตาร์ท `npm run dev`

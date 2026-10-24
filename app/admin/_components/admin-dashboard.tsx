@@ -13,6 +13,7 @@ import type { MechanicAccount, MechanicStatus } from '../../_lib/types';
 import { formatPhone, money } from '../../_lib/rules';
 import { checkSupabase, type HealthReport } from '../../_lib/supabase-health';
 import { AreaReport } from './area-report';
+import { equipmentLabel } from '../../_lib/equipment';
 
 type Tab = 'overview' | 'revenue' | 'areas' | 'workers' | 'jobs' | 'customers';
 type WorkerStatus = MechanicStatus;
@@ -223,6 +224,9 @@ export default function AdminDashboard() {
                       <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">บัญชีรับเงิน</dt><dd className="text-slate-900">{profile.bankName} · {maskAccount(profile.accountLast4)} · {profile.accountName}</dd></div>
                       <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">ที่อยู่ฐาน</dt><dd className="text-slate-900">{formatAddress(profile.baseAddress)}{profile.baseAddress.location ? ' 📍' : ''}</dd></div>
                       <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">รัศมีให้บริการ</dt><dd className="text-slate-900">{profile.serviceRadiusKm} กม.</dd></div>
+                      <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">ชื่อองค์กร</dt><dd className="text-slate-900">{profile.organizationName ?? <span className="text-slate-400">ไม่ได้ระบุ</span>}</dd></div>
+                      <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">สมาชิกช่าง</dt><dd className="text-slate-900">{profile.teamSize ? `${profile.teamSize} คน` : <span className="text-slate-400">ไม่ได้ระบุ</span>}</dd></div>
+                      <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">เครื่องมือที่ใช้</dt><dd className="text-slate-900">{profile.equipment.length ? profile.equipment.map(equipmentLabel).join(' · ') : <span className="text-slate-400">ไม่ได้ระบุ</span>}</dd></div>
                       <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">บัตรประชาชน</dt><dd className="text-slate-900">👷 {profile.idCardFileName}</dd></div>
                       {profile.status === 'rejected' && profile.rejectReason && <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">เหตุผล</dt><dd className="text-rose-700">{profile.rejectReason}</dd></div>}
                       {profile.reviewedAt && profile.status !== 'pending_verification' && <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">ตรวจสอบเมื่อ</dt><dd className="text-slate-900">{formatDateTime(profile.reviewedAt)}</dd></div>}

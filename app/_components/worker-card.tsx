@@ -1,3 +1,6 @@
+import { EquipmentArt } from './equipment-art';
+import { cleanEquipment, equipmentLabel } from '../_lib/equipment';
+
 // การ์ดข้อมูลช่างที่ลูกค้าเห็นหลังช่างกดรับงาน
 export function WorkerCard({
   name,
@@ -6,6 +9,7 @@ export function WorkerCard({
   reviewCount,
   completedJobs,
   status,
+  equipment = [],
 }: {
   name: string;
   photo?: string;
@@ -13,10 +17,14 @@ export function WorkerCard({
   reviewCount: number;
   completedJobs: number;
   status: string;
+  // เครื่องมือที่ช่างใช้ (เลือกตอนสมัคร) · ว่าง = ไม่แสดงส่วนนี้
+  equipment?: string[];
 }) {
   const fullStars = Math.round(rating);
+  const tools = cleanEquipment(equipment);
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-brand-200 bg-white p-4">
+    <div className="rounded-xl border border-brand-200 bg-white p-4">
+    <div className="flex items-center gap-4">
       {photo
         // eslint-disable-next-line @next/next/no-img-element
         ? <img src={photo} alt={`รูปช่าง ${name}`} className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-brand-100" />
@@ -34,6 +42,20 @@ export function WorkerCard({
           <p className="mt-0.5 text-sm text-slate-600">ช่างใหม่ · ยังไม่มีรีวิว</p>
         )}
       </div>
+    </div>
+      {tools.length > 0 && (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <p className="text-xs font-medium text-slate-500">เครื่องมือที่ใช้</p>
+          <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {tools.map((tool) => (
+              <li key={tool} className="flex items-center gap-2 rounded-lg bg-slate-50 p-1.5 pr-2">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-white"><EquipmentArt type={tool} className="h-10 w-10" /></span>
+                <span className="text-xs font-medium leading-snug text-slate-700">{equipmentLabel(tool)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

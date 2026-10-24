@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { BrandName, Logo } from '../../../_components/brand';
 import { AddressEditor, emptyAddressDetails, formatAddress, type AddressDetails } from '../../../_components/address';
 import { registerMechanic } from '../../../_server/actions';
+import { EquipmentArt } from '../../../_components/equipment-art';
+import { equipmentLabel, equipmentOptions } from '../../../_lib/equipment';
 import { setSession } from '../../../_lib/session';
 import { FieldError, inputClass, isValidThaiMobile, labelClass, PhoneOtpField, phoneDigitsOf, phoneErrorMessage, Section, thaiBanks } from '../../../_components/form-ui';
 
@@ -14,10 +16,12 @@ const minPasswordLength = 8;
 
 type MechanicInput = { firstName: string; lastName: string; phone: string; bankName: string; accountNumber: string; accountName: string; serviceRadiusKm: number; baseAddress: AddressDetails; idCardFileName: string; photoDataUrl?: string };
 
-type FieldErrors = Partial<Record<'firstName' | 'lastName' | 'phone' | 'otp' | 'password' | 'confirmPassword' | 'bankName' | 'accountNumber' | 'accountName' | 'baseAddress' | 'idCard' | 'photo' | 'terms', string>>;
+type FieldErrors = Partial<Record<'firstName' | 'lastName' | 'teamSize' | 'phone' | 'otp' | 'password' | 'confirmPassword' | 'equipment' | 'bankName' | 'accountNumber' | 'accountName' | 'baseAddress' | 'idCard' | 'photo' | 'terms', string>>;
 
 export default function WorkerRegistrationForm() {
   const [firstName, setFirstName] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
+  const [teamSize, setTeamSize] = useState('1');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [phoneVerified, setPhoneVerified] = useState(false);
@@ -31,6 +35,7 @@ export default function WorkerRegistrationForm() {
   const [baseAddress, setBaseAddress] = useState<AddressDetails>(emptyAddressDetails);
   const [idCard, setIdCard] = useState<{ name: string; preview: string } | null>(null);
   const [photo, setPhoto] = useState('');
+  const [equipment, setEquipment] = useState<string[]>([]);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitted, setSubmitted] = useState<MechanicInput | null>(null);
@@ -77,6 +82,8 @@ export default function WorkerRegistrationForm() {
     const nextErrors: FieldErrors = {};
     if (!firstName.trim()) nextErrors.firstName = 'กรุณากรอกชื่อ';
     if (!lastName.trim()) nextErrors.lastName = 'กรุณากรอกนามสกุล';
+    const members = Number(teamSize);
+    if (!Number.isInteger(members) || members < 1 || members > 999) nextErrors.teamSize = 'กรุณากรอกจำนวนสมาชิก 1–999 คน';
     if (!isValidThaiMobile(phone)) nextErrors.phone = phoneErrorMessage;
     else if (!phoneVerified) nextErrors.otp = 'กรุณายืนยันเบอร์โทรด้วย OTP';
     if (password.length < minPasswordLength) nextErrors.password = `รหัสผ่านต้องมีอย่างน้อย ${minPasswordLength} ตัวอักษร`;
@@ -86,6 +93,7 @@ export default function WorkerRegistrationForm() {
     if (!accountName.trim()) nextErrors.accountName = 'กรุณากรอกชื่อบัญชี';
     if (!baseAddress.addressLine.trim() || !baseAddress.province || !baseAddress.amphoe) nextErrors.baseAddress = 'กรุณากรอกรายละเอียดที่อยู่ และเลือกจังหวัดกับเขต/อำเภอให้ครบ';
     else if (!baseAddress.location) nextErrors.baseAddress = 'กรุณาปักหมุดตำแหน่ง เพื่อใช้คำนวณระยะทางไปยังงาน';
+    if (!equipment.length) nextErrors.equipment = 'กรุณาเลือกเครื่องมือที่ใช้อย่างน้อย 1 อย่าง';
     if (!photo) nextErrors.photo = 'กรุณาแนบรูปโปรไฟล์';
     if (!idCard) nextErrors.idCard = 'กรุณาแนบรูปบัตรประชาชน';
     if (!acceptTerms) nextErrors.terms = 'กรุณายอมรับข้อกำหนดการให้บริการ';
@@ -109,7 +117,7 @@ export default function WorkerRegistrationForm() {
     };
     // บันทึกใบสมัครลง Supabase (สถานะรอตรวจสอบ) แล้วเข้าสู่ระบบช่างให้ทันที
     setSaving(true);
-    const result = await registerMechanic({ ...profile, password });
+    const result = await registerMechanic({ ...profile, password, equipment, organizationName: organizationName.trim(), teamSize: Number(teamSize) });
     setSaving(false);
     if (!result.ok || !('id' in result) || typeof result.id !== 'string') {
       setErrors({ phone: result.message });
@@ -131,9 +139,12 @@ export default function WorkerRegistrationForm() {
           <p className="mt-3 text-sm text-slate-600">แอดมินจะตรวจสอบข้อมูลและบัตรประชาชนของคุณ ระหว่างนี้ยังไม่สามารถรับงานได้</p>
           <dl className="mt-6 space-y-2 rounded-xl bg-slate-50 p-4 text-left text-sm">
             <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">ชื่อ-นามสกุล</dt><dd className="font-medium text-slate-900">{submitted.firstName} {submitted.lastName}</dd></div>
+            {organizationName.trim() && <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">ชื่อองค์กร</dt><dd className="text-slate-900">{organizationName.trim()}</dd></div>}
+            <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">สมาชิกช่าง</dt><dd className="text-slate-900">{teamSize} คน</dd></div>
             <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">เบอร์โทร</dt><dd className="text-slate-900">{submitted.phone} <span className="text-brand-700">✓ ยืนยันแล้ว</span></dd></div>
             <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">บัญชีรับเงิน</dt><dd className="text-slate-900">{submitted.bankName} · {submitted.accountNumber} · {submitted.accountName}</dd></div>
             <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">รัศมีให้บริการ</dt><dd className="text-slate-900">{submitted.serviceRadiusKm} กม.</dd></div>
+            <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">เครื่องมือที่ใช้</dt><dd className="text-slate-900">{equipment.map(equipmentLabel).join(' · ')}</dd></div>
             <div className="flex gap-3"><dt className="w-28 shrink-0 text-slate-500">ที่อยู่ฐาน</dt><dd className="text-slate-900">{formatAddress(submitted.baseAddress)}</dd></div>
           </dl>
           <Link href="/mechanic/profile" className="mt-6 inline-block rounded-full bg-brand-500 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-600">ไปที่หน้าช่าง</Link>
@@ -164,6 +175,20 @@ export default function WorkerRegistrationForm() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className={labelClass}>ชื่อ <span className="text-rose-700">*</span><input value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" className={inputClass} /><FieldError message={errors.firstName} /></label>
             <label className={labelClass}>นามสกุล <span className="text-rose-700">*</span><input value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" className={inputClass} /><FieldError message={errors.lastName} /></label>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <label className={`${labelClass} sm:col-span-2`}>ชื่อองค์กร <span className="font-normal text-slate-500">(ไม่บังคับ)</span>
+              <input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} maxLength={150} autoComplete="organization" placeholder="เช่น ทีมตัดหญ้าบางใหญ่, หจก. สวนสวย" className={inputClass} />
+              <span className="mt-1 block text-xs font-normal text-slate-500">กรอกถ้าทำงานในนามทีม ร้าน หรือบริษัท</span>
+            </label>
+            <label className={labelClass}>จำนวนสมาชิกช่างตัดหญ้า <span className="text-rose-700">*</span>
+              <span className="relative block">
+                <input type="number" inputMode="numeric" min={1} max={999} step={1} value={teamSize} onChange={(event) => { setTeamSize(event.target.value); setErrors((current) => ({ ...current, teamSize: undefined })); }} className={`${inputClass} pr-10`} />
+                <span className="pointer-events-none absolute right-3 top-1/2 mt-0.5 -translate-y-1/2 text-sm text-slate-500">คน</span>
+              </span>
+              <span className="mt-1 block text-xs font-normal text-slate-500">รวมตัวคุณเอง · ทำคนเดียวใส่ 1</span>
+              <FieldError message={errors.teamSize} />
+            </label>
           </div>
         </Section>
 
@@ -198,7 +223,30 @@ export default function WorkerRegistrationForm() {
           </fieldset>
         </Section>
 
-        <Section step={5} title="ยืนยันตัวตน">
+        <Section step={5} title="เครื่องมือที่ใช้">
+          <p className="mb-3 text-sm text-slate-600">เลือกได้มากกว่า 1 อย่าง · ใช้ประกอบการตรวจสอบบัญชีของแอดมิน</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="group" aria-label="เครื่องมือที่ใช้">
+            {equipmentOptions.map((option) => {
+              const checked = equipment.includes(option.value);
+              return (
+                <label key={option.value} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${checked ? 'border-brand-600 bg-brand-50 text-brand-800' : 'border-slate-200 text-slate-700 hover:border-brand-500'}`}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => { setEquipment((current) => (checked ? current.filter((value) => value !== option.value) : [...current, option.value])); setErrors((current) => ({ ...current, equipment: undefined })); }}
+                    className="h-5 w-5 shrink-0 accent-emerald-700"
+                  />
+                  <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-lg ${checked ? "bg-white" : "bg-slate-50"}`}><EquipmentArt type={option.value} className="h-12 w-12" /></span>
+                  {option.label}
+                </label>
+              );
+            })}
+          </div>
+          {equipment.length > 0 && <p className="mt-2 text-xs text-slate-500">เลือกแล้ว {equipment.length} อย่าง</p>}
+          <FieldError message={errors.equipment} />
+        </Section>
+
+        <Section step={6} title="ยืนยันตัวตน">
           <div className="mb-4 flex items-center gap-4">
             {photo
               // eslint-disable-next-line @next/next/no-img-element

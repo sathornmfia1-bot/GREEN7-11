@@ -185,11 +185,12 @@ export function RoleShell({ role, nav, children }: { role: Role; nav: NavItem[];
         )}
 
         {/* มือถือ: เมนูด้านล่างจอ */}
-        <nav aria-label={`เมนู${roleLabels[role]}`} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white sm:hidden" style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}>
+        <nav aria-label={`เมนู${roleLabels[role]}`} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden" style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}>
           {nav.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? 'page' : undefined} className={`relative flex flex-col items-center gap-0.5 px-1 py-2 text-[11px] font-medium ${isActive(item.href) ? 'text-brand-700' : 'text-slate-500'}`}>
-              <span aria-hidden="true" className="text-lg leading-none">{item.icon}</span>
-              <span className="truncate">{item.label}</span>
+            <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? 'page' : undefined} className={`relative flex min-w-0 flex-col items-center gap-0.5 px-1 py-2 text-[11px] font-medium ${isActive(item.href) ? 'text-brand-700' : 'text-slate-500'}`}>
+              {/* ตัวอักษรใหญ่ของระบบ (เช่น Samsung) ขยายเมนูได้ไม่เกิน 1.15 เท่า และตัดคำที่ยาวเกินช่อง ไม่ให้ทับกัน */}
+              <span aria-hidden="true" className="fit-zoom text-lg leading-none">{item.icon}</span>
+              <span className="fit-zoom block w-full truncate text-center">{item.label}</span>
               {item.badge === 'notifications' && unread > 0 && <span className="absolute right-1/4 top-1 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] leading-none text-white">{unread}</span>}
             </Link>
           ))}

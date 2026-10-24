@@ -79,7 +79,7 @@ function BookingCard({ job }: { job: Job }) {
         ))}
       </ol>
 
-      {mechanic && <div className="mt-4"><WorkerCard name={`${mechanic.firstName} ${mechanic.lastName}`} photo={mechanic.photoDataUrl} rating={mechanic.ratingAverage} reviewCount={mechanic.ratingCount} completedJobs={mechanic.completedJobsCount} status={workStageLabels[stage]} /></div>}
+      {mechanic && <div className="mt-4"><WorkerCard name={`${mechanic.firstName} ${mechanic.lastName}`} photo={mechanic.photoDataUrl} rating={mechanic.ratingAverage} reviewCount={mechanic.ratingCount} completedJobs={mechanic.completedJobsCount} status={workStageLabels[stage]} equipment={mechanic.equipment} /></div>}
 
       {adjustments.map((adjustment) => (
         <div key={adjustment.id} className="mt-4">

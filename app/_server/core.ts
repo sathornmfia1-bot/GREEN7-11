@@ -153,6 +153,7 @@ export function toMechanic(row: any, options: { full: boolean }): MechanicAccoun
     accountLast4: options.full ? row.bank_account_last4 : '',
     accountName: options.full ? row.bank_account_name : '',
     serviceRadiusKm: row.service_radius_km,
+    equipment: [],
     baseAddress: options.full
       ? { addressLine: row.base_address_line, province: row.base_province, amphoe: row.base_amphoe, district: row.base_district ?? '', location: { lat: num(row.base_lat), lng: num(row.base_lng) } }
       : { addressLine: '', province: '', amphoe: '', district: '' },

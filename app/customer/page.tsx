@@ -105,7 +105,7 @@ export default function CustomerBookingPage() {
             <p className="mb-2 text-sm font-semibold text-slate-800">โหมดชำระ</p>
             <div className="flex flex-col gap-2 min-[360px]:flex-row sm:gap-3">
               {([{ id: 'single', label: 'จ่ายครั้งเดียว' }, { id: 'monthly', label: 'แพ็กเกจรายเดือน' }] as const).map((mode) => (
-                <button key={mode.id} type="button" disabled={paid} aria-pressed={paymentMode === mode.id} onClick={() => { setPaymentMode(mode.id); setQuoteOpen(false); }} className={`flex-1 whitespace-nowrap rounded-xl px-2 py-3 text-sm sm:px-4 font-semibold transition-colors ${paymentMode === mode.id ? 'bg-brand-500 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:border-brand-500'}`}>{mode.label}</button>
+                <button key={mode.id} type="button" disabled={paid} aria-pressed={paymentMode === mode.id} onClick={() => { setPaymentMode(mode.id); setQuoteOpen(false); }} className={`min-w-0 flex-1 rounded-xl px-2 py-3 text-sm leading-tight sm:px-4 font-semibold transition-colors ${paymentMode === mode.id ? 'bg-brand-500 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:border-brand-500'}`}><span className="fit-zoom">{mode.label}</span></button>
               ))}
             </div>
           </div>

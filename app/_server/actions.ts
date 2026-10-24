@@ -2,11 +2,12 @@
 
 import { AccessError, jobPhotosSelect, jobSelect, loadPricing, mechanicSelect, must, notify, requireUser, sb, toAdjustment, toJob, toJobPhotos, toMechanic, toNotification, type UserRow } from './core';
 import type { AddressDetails } from '../_components/address';
+import { cleanEquipment } from '../_lib/equipment';
 import { hashSecret, lockMinutes, maxFailedAttempts, maxResetAttempts, passwordProblem, resetCodeMinutes, sixDigitCode, verifySecret } from './password';
 import { overallRating, reviewProblem, reviewStatuses, type ReviewInput } from '../_lib/review';
 import { adjustmentBlockReason, maxCompletionPhotos, minCompletionPhotos } from '../_lib/rules';
 import type { Role } from '../_lib/session';
-import type { CustomerAccount, Inspection, Result, ServiceAddress, Snapshot } from '../_lib/types';
+import type { CustomerAccount, Inspection, MechanicAccount, Result, ServiceAddress, Snapshot } from '../_lib/types';
 
 // ทุกฟังก์ชันในไฟล์นี้ทำงานบนเซิร์ฟเวอร์ ตรวจเซสชันของ role ที่เกี่ยวข้อง แล้วอ่าน/เขียน Supabase
 // ระบบล็อกอินเป็นแบบจำลอง (OTP แสดงบนหน้าจอ) แต่ข้อมูลทั้งหมดเก็บในฐานข้อมูลจริง
@@ -132,8 +133,8 @@ async function customerSnapshot(me: UserRow): Promise<Snapshot> {
   ]);
   return {
     customers: [toCustomer(me, addressRows)],
-    // ลูกค้าเห็นเฉพาะชื่อ รูป และเรทติ้งของช่างที่รับงานตัวเอง
-    mechanics: mechanicRows.map((row) => toMechanic(row, { full: false })),
+    // ลูกค้าเห็นเฉพาะชื่อ รูป เรทติ้ง และเครื่องมือที่ใช้ของช่างที่รับงานตัวเอง
+    mechanics: await withEquipment(mechanicRows.map((row) => toMechanic(row, { full: false }))),
     admins: [], jobs, ...extra, notifications, inspections: [],
   };
 }
@@ -148,7 +149,28 @@ async function mechanicSnapshot(me: UserRow): Promise<Snapshot> {
   const jobs = jobRows.map((row: { mechanic_id: string | null }) => toJob(row, { showPhone: row.mechanic_id === me.id }));
   const myJobIds = jobs.filter((job) => job.mechanicId === me.id).map((job) => job.id);
   const [extra, notifications, inspections] = await Promise.all([related(myJobIds), notificationsOf(me.id), inspectionsOf(myJobIds)]);
-  return { customers: [], mechanics: [toMechanic(profile, { full: true })], admins: [], jobs, ...extra, notifications, inspections };
+  return { customers: [], mechanics: await withEquipment([toMechanic(profile, { full: true })]), admins: [], jobs, ...extra, notifications, inspections };
+}
+
+// เครื่องมือของช่าง (คอลัมน์ equipment) · ยังไม่ได้รัน migration → ถือว่าไม่มีข้อมูล
+async function withEquipment(mechanics: MechanicAccount[]) {
+  if (!mechanics.length) return mechanics;
+  const ids = mechanics.map((mechanic) => mechanic.id);
+  const [tools, org] = await Promise.all([
+    sb().from('mechanic_profiles').select('user_id, equipment').in('user_id', ids),
+    sb().from('mechanic_profiles').select('user_id, organization_name, team_size').in('user_id', ids),
+  ]);
+  for (const { error } of [tools, org]) if (error && error.code !== '42703') console.error(error);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byId = (rows: any[] | null) => new Map((rows ?? []).map((row) => [row.user_id as string, row]));
+  const toolRows = byId(tools.error ? null : tools.data);
+  const orgRows = byId(org.error ? null : org.data);
+  return mechanics.map((mechanic) => ({
+    ...mechanic,
+    equipment: cleanEquipment(toolRows.get(mechanic.id)?.equipment),
+    organizationName: orgRows.get(mechanic.id)?.organization_name || undefined,
+    teamSize: orgRows.get(mechanic.id)?.team_size ?? undefined,
+  }));
 }
 
 async function adminSnapshot(): Promise<Snapshot> {
@@ -163,7 +185,7 @@ async function adminSnapshot(): Promise<Snapshot> {
   const extra = await related(jobs.map((job) => job.id));
   return {
     customers: customerUsers.map((user) => toCustomer(user, addressRows)),
-    mechanics: mechanicRows.map((row) => toMechanic(row, { full: true })),
+    mechanics: await withEquipment(mechanicRows.map((row) => toMechanic(row, { full: true }))),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     admins: users.filter((user: any) => user.role === 'admin').map((user: any) => ({ id: user.id, firstName: user.first_name, lastName: user.last_name, phone: user.phone })),
     jobs, ...extra, notifications: [], inspections: [],
@@ -310,11 +332,16 @@ export async function registerCustomer(input: { firstName: string; lastName: str
   });
 }
 
-export async function registerMechanic(input: { firstName: string; lastName: string; phone: string; password: string; bankName: string; accountNumber: string; accountName: string; serviceRadiusKm: number; baseAddress: AddressDetails; idCardFileName: string; photoDataUrl?: string }) {
+export async function registerMechanic(input: { firstName: string; lastName: string; phone: string; password: string; equipment: string[]; organizationName?: string; teamSize: number; bankName: string; accountNumber: string; accountName: string; serviceRadiusKm: number; baseAddress: AddressDetails; idCardFileName: string; photoDataUrl?: string }) {
   return guard(async () => {
     const base = input.baseAddress;
     if (!base.location) throw new Error('กรุณาปักหมุดที่อยู่ฐาน');
     const account = digitsOf(input.accountNumber);
+    const equipment = cleanEquipment(input.equipment);
+    if (!equipment.length) throw new AccessError('กรุณาเลือกเครื่องมือที่ใช้อย่างน้อย 1 อย่าง');
+    const teamSize = Math.round(Number(input.teamSize));
+    if (!(teamSize >= 1 && teamSize <= 999)) throw new AccessError('กรุณากรอกจำนวนสมาชิกช่างตัดหญ้า 1–999 คน');
+    const organizationName = (input.organizationName ?? '').trim().slice(0, 150) || null;
     const id = await createAccount('mechanic', input);
     must(await sb().from('mechanic_profiles').insert({
       user_id: id, photo_url: input.photoDataUrl ?? '', id_card_image_url: input.idCardFileName,
@@ -322,6 +349,10 @@ export async function registerMechanic(input: { firstName: string; lastName: str
       service_radius_km: input.serviceRadiusKm,
       base_address_line: base.addressLine, base_province: base.province, base_amphoe: base.amphoe, base_district: base.district || null, base_lat: base.location.lat, base_lng: base.location.lng,
     }));
+    const saved = await sb().from('mechanic_profiles').update({ equipment }).eq('user_id', id);
+    if (saved.error) console.error('บันทึกเครื่องมือของช่างไม่สำเร็จ (รัน migration 20261024000000_mechanic_equipment.sql แล้วหรือยัง?)', saved.error);
+    const savedOrg = await sb().from('mechanic_profiles').update({ organization_name: organizationName, team_size: teamSize }).eq('user_id', id);
+    if (savedOrg.error) console.error('บันทึกชื่อองค์กร/จำนวนสมาชิกไม่สำเร็จ (รัน migration 20261024010000_mechanic_organization.sql แล้วหรือยัง?)', savedOrg.error);
     return { ...ok('ส่งใบสมัครเรียบร้อย'), id };
   });
 }
