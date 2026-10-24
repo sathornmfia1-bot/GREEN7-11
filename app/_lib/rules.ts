@@ -36,6 +36,17 @@ export const workStageActions: Record<Exclude<WorkStage, 'done'>, { next: WorkSt
   working: { next: 'done', label: '✅ ทำงานเสร็จแล้ว', message: 'ช่างทำงานเสร็จแล้ว และขอให้คุณช่วยรีวิว' },
 };
 
+// ขอปรับราคา: ได้เฉพาะหลังช่างกด "ถึงที่นัดหมายแล้ว" (ถึงหน้างาน/กำลังทำงาน) · งานละ 1 ครั้ง · งานรายเดือนขอไม่ได้
+export const maxAdjustmentsPerJob = 1;
+
+export function adjustmentBlockReason(stage: WorkStage, isMonthly: boolean, previousRequests: number): string | null {
+  if (isMonthly) return 'งานแพ็กเกจรายเดือนไม่สามารถขอปรับราคาได้';
+  if (previousRequests >= maxAdjustmentsPerJob) return `ขอปรับราคาได้ ${maxAdjustmentsPerJob} ครั้งต่องาน · งานนี้ใช้สิทธิ์แล้ว`;
+  if (stage === 'matched') return 'ขอปรับราคาได้หลังกด “📍 ถึงที่นัดหมายแล้ว” เท่านั้น';
+  if (stage === 'done') return 'งานเสร็จแล้ว ไม่สามารถขอปรับราคาได้';
+  return null;
+}
+
 // รูปงานที่เสร็จแล้วที่ช่างต้องแนบตอนกด "ทำงานเสร็จแล้ว"
 export const minCompletionPhotos = 5;
 export const maxCompletionPhotos = 10;

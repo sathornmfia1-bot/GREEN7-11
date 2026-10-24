@@ -34,17 +34,17 @@ function MyJobCard({ job }: { job: Job }) {
 
   return (
     <article className="card p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
-        <div className="min-w-0">
-          <p className="text-xs text-slate-500">📅 {jobWhen(job)} · {job.title}</p>
-          <p className="mt-1 font-semibold text-slate-900">{job.service} <span className="text-slate-600">{money(job.area)} ตารางวา · {heightText(job.service, job.grassHeight)}</span></p>
-          <span className="mt-1 inline-block badge bg-brand-100 text-brand-700">{workStageLabels[stage]}</span>
+      <div className="border-b border-slate-100 pb-3">
+        <p className="text-xs text-slate-500">📅 {jobWhen(job)} · {job.title}</p>
+        {/* บรรทัดที่สอง: บริการ (ซ้าย) และรายรับช่าง (ขวา) อยู่แถวเดียวกัน */}
+        <div className="mt-1 flex items-start justify-between gap-3">
+          <p className="min-w-0 font-semibold text-slate-900">{job.service} <span className="text-slate-600">{money(job.area)} ตารางวา · {heightText(job.service, job.grassHeight)}</span></p>
+          <div className="shrink-0 text-right">
+            <p className="text-lg font-bold leading-snug text-brand-700">฿{money(netPayout(job.price))}</p>
+            {job.priceNote && <p className="text-xs text-slate-500">{job.priceNote}</p>}
+          </div>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="text-xs text-slate-500">ลูกค้าจ่าย <span className="font-semibold text-slate-700">฿{money(job.price)}</span></p>
-          <p className="text-xs text-slate-500">คุณได้รับ <span className="text-lg font-bold text-brand-700">฿{money(netPayout(job.price))}</span></p>
-          {job.priceNote && <p className="text-xs text-slate-500">{job.priceNote}</p>}
-        </div>
+        <span className="mt-1 inline-block badge bg-brand-100 text-brand-700">{workStageLabels[stage]}</span>
       </div>
 
       <div className="mt-3 space-y-1.5 text-sm text-slate-700">

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { formatAddress } from '../../_components/address';
-import { formatThaiDate } from '../../_components/date-input';
+import { formatThaiDate, isoDateFromToday } from '../../_components/date-input';
 import { thaiBanks } from '../../_components/form-ui';
 import { AdjustmentDecision } from '../../_components/inspection';
 import { PhotoGallery } from '../../_components/photo-gallery';
@@ -63,7 +63,7 @@ function BookingCard({ job }: { job: Job }) {
     <article className="card p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs text-slate-500">📅 {jobWhen(job)}</p>
+          <p className="text-xs text-slate-500">📅 {jobWhen(job)}{[isoDateFromToday(0), isoDateFromToday(1)].includes(job.date) && ` · ${formatThaiDate(job.date)}`}</p>
           <p className="mt-1 font-semibold text-slate-900">{job.service} <span className="text-slate-600">{money(job.area)} ตารางวา · {heightText(job.service, job.grassHeight)}</span></p>
           <p className="mt-0.5 text-sm text-slate-600">{formatAddress(job.address)}</p>
         </div>
@@ -140,8 +140,10 @@ export default function CustomerBookingsPage() {
   const db = useData();
   const customer = useCustomer();
   const mine = db.jobs.filter((job) => job.customerId === customer.id);
-  const active = mine.filter((job) => !job.cancelledAt).sort((a, b) => a.date.localeCompare(b.date));
-  const cancelled = mine.filter((job) => job.cancelledAt).sort((a, b) => b.date.localeCompare(a.date));
+  // เรียงตามวันนัดหมายจากน้อยไปมาก · วันเดียวกันเรียงตามเวลานัด แล้วตามเวลาที่จอง
+  const byDate = (a: Job, b: Job) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? '') || (a.bookedAt ?? '').localeCompare(b.bookedAt ?? '');
+  const active = mine.filter((job) => !job.cancelledAt).sort(byDate);
+  const cancelled = mine.filter((job) => job.cancelledAt).sort(byDate);
 
   return (
     <div>
@@ -150,14 +152,14 @@ export default function CustomerBookingsPage() {
         <Link href="/customer" className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">+ จองบริการ</Link>
       </div>
       {active.length ? (
-        <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">{active.map((job) => <BookingCard key={job.id} job={job} />)}</div>
+        <div className="mt-4 grid max-w-3xl grid-cols-1 gap-4">{active.map((job) => <BookingCard key={job.id} job={job} />)}</div>
       ) : (
         <p className="card mt-4 p-6 text-center text-sm text-slate-600">ยังไม่มีการจอง · <Link href="/customer" className="font-semibold text-brand-700 underline">จองบริการดูแลสวน</Link></p>
       )}
       {cancelled.length > 0 && (
         <section className="mt-8">
           <h2 className="font-semibold text-slate-700">ยกเลิกแล้ว</h2>
-          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">{cancelled.map((job) => <BookingCard key={job.id} job={job} />)}</div>
+          <div className="mt-3 grid max-w-3xl grid-cols-1 gap-3">{cancelled.map((job) => <BookingCard key={job.id} job={job} />)}</div>
         </section>
       )}
     </div>

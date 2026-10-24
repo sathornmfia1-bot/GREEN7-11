@@ -4,7 +4,7 @@ import { AccessError, jobPhotosSelect, jobSelect, loadPricing, mechanicSelect, m
 import type { AddressDetails } from '../_components/address';
 import { hashSecret, lockMinutes, maxFailedAttempts, maxResetAttempts, passwordProblem, resetCodeMinutes, sixDigitCode, verifySecret } from './password';
 import { overallRating, reviewProblem, reviewStatuses, type ReviewInput } from '../_lib/review';
-import { maxCompletionPhotos, minCompletionPhotos } from '../_lib/rules';
+import { adjustmentBlockReason, maxCompletionPhotos, minCompletionPhotos } from '../_lib/rules';
 import type { Role } from '../_lib/session';
 import type { CustomerAccount, Inspection, Result, ServiceAddress, Snapshot } from '../_lib/types';
 
@@ -672,8 +672,10 @@ export async function requestAdjustment(jobId: string, request: { newAmount: num
     const me = await requireUser('mechanic');
     const job = await myJob(me, jobId);
     if (!job || job.cancelled_at) return fail('ไม่พบงานนี้ในงานของคุณ');
-    if (job.is_monthly) return fail('งานแพ็กเกจรายเดือนไม่สามารถขอปรับราคาได้');
-    if (await hasOpenAdjustment(jobId)) return fail('มีคำขอปรับราคาที่รอลูกค้าตอบอยู่แล้ว');
+    const previous = must(await sb().from('quote_adjustments').select('id').eq('job_id', jobId));
+    const stage = ({ matched: 'matched', arrived: 'arrived', working: 'working' } as const)[job.status as 'matched' | 'arrived' | 'working'] ?? 'done';
+    const blocked = adjustmentBlockReason(stage, Boolean(job.is_monthly), previous.length);
+    if (blocked) return fail(blocked);
     const pricing = await loadPricing();
     // ตรวจราคาใหม่จากตารางราคาในฐานข้อมูล (ไม่เชื่อตัวเลขจากเบราว์เซอร์)
     const jobRow = must(await sb().from('jobs').select('service_type_code, extra_charges').eq('id', jobId).single());

@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { resizeImage } from '../_lib/image';
+import { adjustmentBlockReason } from '../_lib/rules';
 import type { Inspection, Job, QuoteAdjustment } from '../_lib/types';
-import { debrisRatePerHour, grassHeightLabels, pricePerVisit } from './pricing';
+import { debrisRatePerHour, grassHeightLabels, netPayout, pricePerVisit } from './pricing';
 
 const money = (value: number) => new Intl.NumberFormat('th-TH').format(value);
 
@@ -85,6 +86,9 @@ export function InspectionPanel({
 
 
   const pending = adjustments.some((adjustment) => adjustment.customerDecision === 'pending' || adjustment.settlement === 'awaiting_payment');
+  const blockReason = adjustmentBlockReason(job.workStage ?? 'matched', Boolean(job.isMonthly), adjustments.length);
+  const decided = adjustments.find((adjustment) => adjustment.customerDecision !== 'pending');
+  const decisionText = decided && ({ accepted: 'ลูกค้ายอมรับราคาใหม่แล้ว', rejected: 'ลูกค้าปฏิเสธ ใช้ราคาเดิม', expired: 'ลูกค้าไม่ตอบภายในเวลา ใช้ราคาเดิม', pending: '' } as const)[decided.customerDecision];
   const areaValue = Math.max(Math.round(Number(actualArea) || 0), 0);
   const servicePrice = pricePerVisit(job.service, areaValue, actualHeight);
   const debrisPrice = debrisHours * debrisRatePerHour;
@@ -142,7 +146,7 @@ export function InspectionPanel({
               <li>ความสูงหญ้าก่อนตัด: <span className="font-semibold">{grassHeightLabels[aiResult.grassHeight]}</span> (แจ้งไว้ {grassHeightLabels[job.grassHeight]})</li>
               <li>เศษวัสดุที่ต้องเคลียร์: <span className="font-semibold">{aiResult.debrisHours ? `ประมาณ ${aiResult.debrisHours} ชม.` : 'ไม่พบ'}</span></li>
             </ul>
-            {!job.isMonthly && !pending && <button type="button" onClick={applyAiResult} className="mt-2 text-sm font-semibold text-brand-700 hover:underline">ใช้ค่าจาก AI ในคำขอปรับราคา →</button>}
+            {!blockReason && <button type="button" onClick={applyAiResult} className="mt-2 text-sm font-semibold text-brand-700 hover:underline">ใช้ค่าจาก AI ในคำขอปรับราคา →</button>}
           </div>
         ) : (
           <button type="button" onClick={analyze} disabled={!before || !after || aiStatus === 'analyzing'} className="mt-2 rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-brand-500 disabled:cursor-not-allowed disabled:opacity-50">
@@ -153,12 +157,12 @@ export function InspectionPanel({
 
       <div>
         <p className="text-sm font-semibold text-slate-800">3. ปรับราคาหน้างาน</p>
-        {job.isMonthly ? (
-          <p className="mt-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">งานแพ็กเกจรายเดือนไม่สามารถขอปรับราคาได้</p>
-        ) : pending ? (
+        {pending ? (
           <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">ส่งคำขอปรับราคาแล้ว รอลูกค้าดำเนินการ · ราคายังคงเป็น ฿{money(job.price)} จนกว่าลูกค้าจะยืนยัน</p>
+        ) : blockReason ? (
+          <p className="mt-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{blockReason}{decisionText && ` (${decisionText})`}</p>
         ) : !formOpen ? (
-          <button type="button" onClick={() => { setActualArea(String(job.area)); setActualHeight(job.grassHeight); setDebrisHours(0); setFormOpen(true); }} className="mt-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700">ขอปรับราคา</button>
+          <button type="button" onClick={() => { setActualArea(String(job.area)); setActualHeight(job.grassHeight); setDebrisHours(0); setFormOpen(true); }} className="mt-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700">ขอปรับราคา (ได้ 1 ครั้ง)</button>
         ) : (
           <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -168,15 +172,20 @@ export function InspectionPanel({
             </div>
             <label className="mt-3 block text-sm font-medium text-slate-700">หมายเหตุถึงลูกค้า (ไม่บังคับ)<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="เช่น มีกิ่งไม้ใหญ่หักหลังบ้าน" className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
 
-            <div className="mt-3 rounded-lg bg-white p-3 text-sm">
-              <div className="flex justify-between"><span className="text-slate-600">ราคาเดิม</span><span>฿{money(job.price)}</span></div>
-              <div className="flex justify-between"><span className="text-slate-600">ค่าบริการตามข้อมูลจริง</span><span>฿{money(servicePrice)}</span></div>
-              {previousExtra > 0 && <div className="flex justify-between"><span className="text-slate-600">ค่าใช้จ่ายเพิ่มที่ยอมรับแล้ว</span><span>฿{money(previousExtra)}</span></div>}
-              {debrisHours > 0 && <div className="flex justify-between"><span className="text-slate-600">ค่าเคลียร์เศษวัสดุ</span><span>฿{money(debrisPrice)}</span></div>}
-              <div className="mt-1 flex justify-between border-t border-slate-100 pt-1 font-semibold"><span>ราคาใหม่</span><span className="text-brand-700">฿{money(newAmount)}</span></div>
-              <div className={`flex justify-between text-xs ${difference > 0 ? 'text-rose-700' : difference < 0 ? 'text-emerald-700' : 'text-slate-500'}`}><span>ส่วนต่าง</span><span>{difference > 0 ? '+' : ''}฿{money(difference)}</span></div>
+            {/* สรุปราคา: ราคาเดิม/ใหม่ พร้อมรายรับช่าง (หลังหักค่าบริการแพลตฟอร์ม) และยอดที่ปรับ */}
+            <dl className="mt-3 rounded-lg bg-white p-3 text-sm tabular-nums">
+              <div className="flex justify-between"><dt className="text-slate-700">ราคาเดิม</dt><dd className="font-semibold text-slate-900">฿{money(job.price)}</dd></div>
+              <div className="flex justify-between text-slate-500"><dt className="pl-3">รายรับช่างตัดหญ้า</dt><dd>฿{money(netPayout(job.price))}</dd></div>
+
+              <div className="mt-3 flex justify-between border-t border-slate-100 pt-3"><dt className="text-slate-700">ราคาใหม่</dt><dd className="font-semibold text-slate-900">฿{money(newAmount)}</dd></div>
+              <div className="flex justify-between text-slate-500"><dt className="pl-3">รายรับช่างตัดหญ้า</dt><dd className="font-semibold text-brand-700">฿{money(netPayout(newAmount))}</dd></div>
+
+              <div className={`mt-3 flex justify-between border-t border-slate-100 pt-3 font-semibold ${difference > 0 ? 'text-rose-700' : difference < 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                <dt>{difference < 0 ? 'ราคาปรับลด' : 'ราคาปรับเพิ่ม'}</dt>
+                <dd>{difference > 0 ? '+ ' : difference < 0 ? '− ' : ''}฿{money(Math.abs(difference))}</dd>
+              </div>
               {reasons.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-slate-600">{reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
-            </div>
+            </dl>
 
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" onClick={submit} disabled={!reasons.length || difference === 0} className="rounded-full bg-brand-500 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300">ส่งคำขอให้ลูกค้ายืนยัน</button>
