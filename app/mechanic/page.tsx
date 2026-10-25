@@ -5,7 +5,7 @@ import { formatThaiDate } from '../_components/date-input';
 import { heightText, netPayout, platformFeePercent } from '../_components/pricing';
 import { useData, useMechanic, useRun } from '../_components/role-shell';
 import { acceptJob } from '../_server/actions';
-import { jobWhen, money } from '../_lib/rules';
+import { jobAreaBlockReason, jobWhen, maxJobArea, maxTeamSize, money } from '../_lib/rules';
 import { VerificationBanner } from './_components/verification-banner';
 
 // ช่าง: งานใหม่ใน Job Pool (งานที่ยังไม่มีช่างรับ) — ไม่แสดงเบอร์โทรลูกค้าจนกว่าจะรับงาน
@@ -30,11 +30,13 @@ export default function MechanicJobPoolPage() {
         <h1 className="text-2xl font-bold text-slate-900">งานใหม่ใน Job Pool</h1>
         <span className="badge bg-brand-100 text-brand-700">{pool.length} งาน</span>
       </div>
-      <p className="mt-1 text-xs text-slate-500">ราคาที่แสดงเป็นราคาสุทธิ หลังหักค่า Platform {platformFeePercent}%</p>
+      <p className="mt-1 text-xs text-slate-500">ราคาที่แสดงเป็นราคาสุทธิ หลังหักค่า Platform {platformFeePercent}% · ทีมคุณ {Math.min(maxTeamSize, Math.max(1, mechanic.teamSize ?? 1))} คน รับงานได้ไม่เกิน {money(maxJobArea(mechanic.teamSize))} ตร.ว.</p>
 
       <div className="mt-4 grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
         {pool.length ? pool.map(({ job, distance }) => {
           const busy = bookedDates.has(job.date);
+          // พื้นที่เกินกำลังทีม (คนละ 400 ตร.ว.) → รับงานไม่ได้
+          const tooLarge = jobAreaBlockReason(job.area, mechanic.teamSize);
           return (
             <article key={job.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="flex items-center justify-between gap-3 bg-slate-50 px-4 py-2 text-xs">
@@ -70,7 +72,8 @@ export default function MechanicJobPoolPage() {
               <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-4 py-3">
                 {!canAccept && <span className="text-xs text-amber-700">{mechanic.status === 'rejected' ? 'ใบสมัครไม่ผ่านการอนุมัติ' : 'รอแอดมินอนุมัติบัญชีก่อนรับงาน'}</span>}
                 {busy && <span className="text-xs text-rose-700">คุณมีงานวันที่ {formatThaiDate(job.date)} แล้ว · รับได้วันละ 1 งาน</span>}
-                <button type="button" onClick={() => { run(acceptJob(job.id)); }} disabled={!canAccept || busy} className="rounded-full bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300">{busy ? 'ไม่ว่าง' : 'รับงาน'}</button>
+                {tooLarge && <span className="text-xs text-rose-700">{tooLarge}</span>}
+                <button type="button" onClick={() => { run(acceptJob(job.id)); }} disabled={!canAccept || busy || Boolean(tooLarge)} className="rounded-full bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300">{busy ? 'ไม่ว่าง' : tooLarge ? 'เกินกำลังทีม' : 'รับงาน'}</button>
               </div>
             </article>
           );

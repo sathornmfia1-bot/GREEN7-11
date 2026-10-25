@@ -5,7 +5,7 @@ import type { AddressDetails } from '../_components/address';
 import { cleanEquipment } from '../_lib/equipment';
 import { hashSecret, lockMinutes, maxFailedAttempts, maxResetAttempts, passwordProblem, resetCodeMinutes, sixDigitCode, verifySecret } from './password';
 import { overallRating, reviewProblem, reviewStatuses, type ReviewInput } from '../_lib/review';
-import { adjustmentBlockReason, maxCompletionPhotos, minCompletionPhotos } from '../_lib/rules';
+import { adjustmentBlockReason, jobAreaBlockReason, maxCompletionPhotos, maxTeamSize, minCompletionPhotos } from '../_lib/rules';
 import type { Role } from '../_lib/session';
 import type { CustomerAccount, Inspection, MechanicAccount, Result, ServiceAddress, Snapshot } from '../_lib/types';
 
@@ -340,7 +340,7 @@ export async function registerMechanic(input: { firstName: string; lastName: str
     const equipment = cleanEquipment(input.equipment);
     if (!equipment.length) throw new AccessError('กรุณาเลือกเครื่องมือที่ใช้อย่างน้อย 1 อย่าง');
     const teamSize = Math.round(Number(input.teamSize));
-    if (!(teamSize >= 1 && teamSize <= 999)) throw new AccessError('กรุณากรอกจำนวนสมาชิกช่างตัดหญ้า 1–999 คน');
+    if (!(teamSize >= 1 && teamSize <= maxTeamSize)) throw new AccessError(`กรุณากรอกจำนวนสมาชิกช่างตัดหญ้า 1–${maxTeamSize} คน`);
     const organizationName = (input.organizationName ?? '').trim().slice(0, 150) || null;
     const id = await createAccount('mechanic', input);
     must(await sb().from('mechanic_profiles').insert({
@@ -605,8 +605,13 @@ export async function acceptJob(jobId: string) {
     const me = await requireUser('mechanic');
     const profile = await verifiedMechanic(me);
     if (profile.verification_status !== 'verified') return fail('บัญชีช่างยังไม่ผ่านการตรวจสอบจากแอดมิน จึงยังรับงานไม่ได้');
-    const job = must(await sb().from('jobs').select('id, customer_id, appointment_date, service_name, title').eq('id', jobId).maybeSingle());
+    const job = must(await sb().from('jobs').select('id, customer_id, appointment_date, service_name, title, area_sq_wah').eq('id', jobId).maybeSingle());
     if (!job) return fail('ไม่พบงานนี้');
+    // พื้นที่งานต้องไม่เกินกำลังทีม (คนละ 400 ตร.ว.) · ยังไม่ได้รัน migration จำนวนสมาชิก → ถือว่าทำคนเดียว
+    const team = await sb().from('mechanic_profiles').select('team_size').eq('user_id', me.id).maybeSingle();
+    if (team.error && team.error.code !== '42703') throw team.error;
+    const tooLarge = jobAreaBlockReason(Number(job.area_sq_wah), team.error ? 1 : (team.data as { team_size: number } | null)?.team_size);
+    if (tooLarge) return fail(tooLarge);
     // กดรับพร้อมกันหลายคน: อัปเดตได้เฉพาะงานที่ยังว่าง · ดัชนี jobs_one_per_mechanic_per_day กันรับเกินวันละ 1 งาน
     const { data, error } = await sb().from('jobs').update({ mechanic_id: me.id, status: 'matched', accepted_at: new Date().toISOString() })
       .eq('id', jobId).eq('status', 'open').is('mechanic_id', null).is('cancelled_at', null).select('id');

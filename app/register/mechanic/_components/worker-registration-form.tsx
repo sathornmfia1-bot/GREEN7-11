@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { BrandName, Logo } from '../../../_components/brand';
+import { Logo } from '../../../_components/brand';
 import { AddressEditor, emptyAddressDetails, formatAddress, type AddressDetails } from '../../../_components/address';
 import { registerMechanic } from '../../../_server/actions';
 import { EquipmentArt } from '../../../_components/equipment-art';
 import { equipmentLabel, equipmentOptions } from '../../../_lib/equipment';
+import { areaPerMember, maxTeamSize } from '../../../_lib/rules';
 import { setSession } from '../../../_lib/session';
 import { FieldError, inputClass, isValidThaiMobile, labelClass, PhoneOtpField, phoneDigitsOf, phoneErrorMessage, Section, thaiBanks } from '../../../_components/form-ui';
 
@@ -83,7 +84,7 @@ export default function WorkerRegistrationForm() {
     if (!firstName.trim()) nextErrors.firstName = 'กรุณากรอกชื่อ';
     if (!lastName.trim()) nextErrors.lastName = 'กรุณากรอกนามสกุล';
     const members = Number(teamSize);
-    if (!Number.isInteger(members) || members < 1 || members > 999) nextErrors.teamSize = 'กรุณากรอกจำนวนสมาชิก 1–999 คน';
+    if (!Number.isInteger(members) || members < 1 || members > maxTeamSize) nextErrors.teamSize = `กรุณากรอกจำนวนสมาชิก 1–${maxTeamSize} คน`;
     if (!isValidThaiMobile(phone)) nextErrors.phone = phoneErrorMessage;
     else if (!phoneVerified) nextErrors.otp = 'กรุณายืนยันเบอร์โทรด้วย OTP';
     if (password.length < minPasswordLength) nextErrors.password = `รหัสผ่านต้องมีอย่างน้อย ${minPasswordLength} ตัวอักษร`;
@@ -159,8 +160,7 @@ export default function WorkerRegistrationForm() {
     <main className="mx-auto max-w-2xl px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"><Logo /><Link href="/login/mechanic" className="ml-auto text-sm font-medium text-brand-600 hover:underline">มีบัญชีแล้ว? เข้าสู่ระบบ</Link></div>
       <header className="mt-3">
-        <p><BrandName className="text-xs tracking-[0.2em]" /></p>
-        <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">สมัครเป็นช่างตัดหญ้า</h1>
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">สมัครเป็นช่างตัดหญ้า</h1>
         <p className="mt-2 text-sm text-slate-600">กรอกข้อมูลให้ครบ หลังสมัครบัญชีจะอยู่ในสถานะรอแอดมินตรวจสอบก่อนเริ่มรับงาน</p>
       </header>
 
@@ -183,10 +183,14 @@ export default function WorkerRegistrationForm() {
             </label>
             <label className={labelClass}>จำนวนสมาชิกช่างตัดหญ้า <span className="text-rose-700">*</span>
               <span className="relative block">
-                <input type="number" inputMode="numeric" min={1} max={999} step={1} value={teamSize} onChange={(event) => { setTeamSize(event.target.value); setErrors((current) => ({ ...current, teamSize: undefined })); }} className={`${inputClass} pr-10`} />
+                <input type="number" inputMode="numeric" min={1} max={maxTeamSize} step={1} value={teamSize} onChange={(event) => { setTeamSize(event.target.value); setErrors((current) => ({ ...current, teamSize: undefined })); }} className={`${inputClass} pr-10`} />
                 <span className="pointer-events-none absolute right-3 top-1/2 mt-0.5 -translate-y-1/2 text-sm text-slate-500">คน</span>
               </span>
-              <span className="mt-1 block text-xs font-normal text-slate-500">รวมตัวคุณเอง · ทำคนเดียวใส่ 1</span>
+              <span className="mt-1 block text-xs font-normal text-slate-500">รวมตัวคุณเอง · ทำคนเดียวใส่ 1 · สูงสุด {maxTeamSize} คน</span>
+              {/* บอกกำลังรับงานตามจำนวนสมาชิกที่กรอก */}
+              {Number.isInteger(Number(teamSize)) && Number(teamSize) >= 1 && Number(teamSize) <= maxTeamSize && (
+                <span className="mt-1 block text-xs font-medium text-brand-700">รับงานได้ไม่เกิน {(Number(teamSize) * areaPerMember).toLocaleString('th-TH')} ตร.ว. (คนละ {areaPerMember} ตร.ว.)</span>
+              )}
               <FieldError message={errors.teamSize} />
             </label>
           </div>

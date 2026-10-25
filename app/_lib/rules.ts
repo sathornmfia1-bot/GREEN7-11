@@ -47,6 +47,22 @@ export function adjustmentBlockReason(stage: WorkStage, isMonthly: boolean, prev
   return null;
 }
 
+// กำลังรับงานตามจำนวนสมาชิก: คนละไม่เกิน 400 ตร.ว. (ทำคนเดียว = รับงานได้ไม่เกิน 400 ตร.ว.) · สมาชิกได้สูงสุด 5 คน
+export const maxTeamSize = 5;
+export const areaPerMember = 400;
+
+export function maxJobArea(teamSize: number | undefined) {
+  const members = Math.min(maxTeamSize, Math.max(1, Math.round(teamSize ?? 1)));
+  return members * areaPerMember;
+}
+
+export function jobAreaBlockReason(area: number, teamSize: number | undefined): string | null {
+  const limit = maxJobArea(teamSize);
+  if (area <= limit) return null;
+  const members = limit / areaPerMember;
+  return `งานนี้ ${area.toLocaleString('th-TH')} ตร.ว. เกินกำลังทีมคุณ (${members} คน รับได้ไม่เกิน ${limit.toLocaleString('th-TH')} ตร.ว.)`;
+}
+
 // รูปงานที่เสร็จแล้วที่ช่างต้องแนบตอนกด "ทำงานเสร็จแล้ว"
 export const minCompletionPhotos = 5;
 export const maxCompletionPhotos = 10;

@@ -19,6 +19,7 @@
    - `migrations/20261024000000_mechanic_equipment.sql` — เครื่องมือที่ช่างใช้ (เลือกได้หลายอย่างตอนสมัคร)
    - `migrations/20261024010000_mechanic_organization.sql` — ชื่อองค์กร (ไม่บังคับ) และจำนวนสมาชิกช่างตัดหญ้า
    - `migrations/20261025000000_more_equipment.sql` — เพิ่มเครื่องมือ: กรรไกรตัดแต่งกิ่ง, กรรไกรด้ามยาว เล็มพุ่ม, กรรไกรกระตุกกิ่ง, เครื่องตัดแต่งพุ่มไฟฟ้า
+   - `migrations/20261025010000_team_size_limit.sql` — จำนวนสมาชิกช่างสูงสุด 5 คน (รับงานได้คนละ 400 ตร.ว.)
 2. คัดลอก `.env.local.example` เป็น `.env.local` แล้วใส่ URL, anon key และ **service_role key**
 3. สร้างบัญชีทดสอบ: `node scripts/seed-test-accounts.mjs` (รันซ้ำได้)
 4. รีสตาร์ท `npm run dev`
