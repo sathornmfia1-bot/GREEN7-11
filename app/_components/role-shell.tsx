@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { loadJobPhotos, loadSnapshot, type JobPhotoSet } from '../_server/actions';
 import { Logo } from './brand';
+import { useKeyboardOpen } from './mobile';
 import { clearSession, getSessionUserId, roleLabels, type Role } from '../_lib/session';
 import type { AdminAccount, CustomerAccount, MechanicAccount, Result, Snapshot } from '../_lib/types';
 
@@ -57,6 +58,8 @@ export function RoleShell({ role, nav, children }: { role: Role; nav: NavItem[];
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   // ใช้เฉพาะผลของคำขอล่าสุด (โหลดซ้อนกันได้ เช่น ระหว่างอัปเดตอัตโนมัติกับหลังกดปุ่ม)
   const latestRequest = useRef(0);
+  // มือถือ: ระหว่างพิมพ์ (แป้นพิมพ์เปิด) ซ่อนเมนูล่าง ไม่ให้ลอยขึ้นมาบังช่องที่กำลังกรอก
+  const keyboardOpen = useKeyboardOpen();
   // รูปสนามหญ้า (แนบตอนจอง) และรูปงานที่เสร็จแล้ว (แนบตอนเสร็จงาน) ไม่เปลี่ยนหลังแนบ → เก็บไว้ ไม่ต้องโหลดซ้ำทุก 5 วินาที
   // คีย์รวมสถานะ "เสร็จแล้ว" ด้วย เมื่องานเปลี่ยนเป็นเสร็จจะโหลดใหม่หนึ่งครั้งเพื่อเอารูปงานที่เสร็จแล้ว
   const photoCache = useRef(new Map<string, JobPhotoSet>());
@@ -188,7 +191,7 @@ export function RoleShell({ role, nav, children }: { role: Role; nav: NavItem[];
         )}
 
         {/* มือถือ: เมนูด้านล่างจอ */}
-        <nav aria-label={`เมนู${roleLabels[role]}`} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden" style={{ gridTemplateColumns: `repeat(${mobileNav.length}, minmax(0, 1fr))` }}>
+        <nav aria-label={`เมนู${roleLabels[role]}`} className={`fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden ${keyboardOpen ? 'hidden' : ''}`} style={{ gridTemplateColumns: `repeat(${mobileNav.length}, minmax(0, 1fr))` }}>
           {mobileNav.map((item) => (
             <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? 'page' : undefined} className={`relative flex h-16 min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium ${isActive(item.href) ? 'text-brand-700' : 'text-slate-500'}`}>
               {/* ตัวอักษรใหญ่ของระบบ (เช่น Samsung) ขยายเมนูได้ไม่เกิน 1.15 เท่า และตัดคำที่ยาวเกินช่อง ไม่ให้ทับกัน */}

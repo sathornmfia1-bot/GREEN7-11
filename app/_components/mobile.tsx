@@ -8,8 +8,32 @@ import { useEffect, useRef, useState } from 'react';
 // ความสูงแถบเมนูล่างของหน้าที่ล็อกอินแล้ว (role-shell) — แถบปุ่มหลักลอยอยู่เหนือแถบเมนูนี้
 export const mobileNavHeight = '4rem';
 
+// ช่องที่เปิดแป้นพิมพ์บนมือถือ (ไม่นับ checkbox/radio/ปุ่ม/รายการเลือก ที่ไม่เปิดแป้นพิมพ์)
+function opensKeyboard(element: EventTarget | null) {
+  if (!(element instanceof HTMLElement)) return false;
+  if (element.isContentEditable || element instanceof HTMLTextAreaElement) return true;
+  return element instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'range', 'color', 'image', 'hidden'].includes(element.type);
+}
+
+// แป้นพิมพ์เปิดอยู่หรือไม่ (มีช่องพิมพ์ที่โฟกัสอยู่) · ใช้ซ่อนแถบที่ติดด้านล่างจอระหว่างพิมพ์
+export function useKeyboardOpen() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const update = () => setOpen(opensKeyboard(document.activeElement));
+    // focusout เกิดก่อนโฟกัสย้ายไปช่องถัดไป → ตรวจใหม่หลังเหตุการณ์จบ
+    const onFocusOut = () => window.setTimeout(update, 0);
+    document.addEventListener('focusin', update);
+    document.addEventListener('focusout', onFocusOut);
+    return () => { document.removeEventListener('focusin', update); document.removeEventListener('focusout', onFocusOut); };
+  }, []);
+  return open;
+}
+
 // แถบปุ่มหลักติดด้านล่างจอ (มือถือเท่านั้น) · aboveNav = อยู่เหนือแถบเมนูล่าง
+// ระหว่างพิมพ์ (แป้นพิมพ์เปิด) ซ่อนแถบนี้ ไม่ให้ลอยขึ้นมาบังช่องที่กำลังกรอก
 export function MobileStickyBar({ children, aboveNav = false }: { children: React.ReactNode; aboveNav?: boolean }) {
+  const keyboardOpen = useKeyboardOpen();
+  if (keyboardOpen) return null;
   return (
     <div
       className="fixed inset-x-0 z-30 border-t border-slate-200 bg-white px-4 pt-3 shadow-[0_-4px_16px_rgba(16,24,40,0.06)] sm:hidden"
