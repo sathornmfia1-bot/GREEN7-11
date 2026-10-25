@@ -79,7 +79,7 @@ export default function CustomerBookingPage() {
     const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     return { iso, day: date.getDate(), weekday: ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'][date.getDay()] };
   }), []);
-  const stepLabels = ['เลือกบริการ', 'รายละเอียด', 'ใบเสนอราคา'];
+  const stepLabels = ['เลือกบริการ', 'รายละเอียด', 'ใบราคา'];
   const mobileHidden = (visibleStep: number) => (step !== visibleStep ? 'max-sm:hidden' : '');
 
   function beginQuote() {
