@@ -53,7 +53,7 @@ export default function MechanicJobPoolPage() {
                 </div>
                 <ul className="mt-3 space-y-1.5 text-sm text-slate-700">
                   <li className="flex gap-2"><span aria-hidden="true" className="w-5 shrink-0 text-center">👤</span><span><span className="sr-only">ลูกค้า: </span>{job.firstName} {job.lastName}</span></li>
-                  <li className="flex gap-2"><span aria-hidden="true" className="w-5 shrink-0 text-center">📍</span><span><span className="sr-only">ที่อยู่บริการ: </span>{formatAddress(job.address)} <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery(job.address))}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap font-medium text-brand-700 hover:underline">แผนที่ ↗</a></span></li>
+                  <li className="flex gap-2"><span aria-hidden="true" className="w-5 shrink-0 text-center">📍</span><span><span className="sr-only">ที่อยู่บริการ: </span>{formatAddress(job.address)}</span></li>
                   <li className="flex gap-2"><span aria-hidden="true" className="w-5 shrink-0 text-center">🚗</span><span><span className="sr-only">ระยะทาง: </span>
                     {distance !== null
                       ? <><span className="font-semibold text-slate-900">ห่าง {formatDistance(distance)}</span> <span className="text-xs text-slate-500">(เส้นตรง)</span> <a href={`https://www.google.com/maps/dir/?api=1&origin=${base!.lat},${base!.lng}&destination=${encodeURIComponent(mapQuery(job.address))}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap font-medium text-brand-700 hover:underline">ดูเส้นทาง ↗</a></>
