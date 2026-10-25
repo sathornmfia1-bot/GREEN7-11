@@ -198,7 +198,6 @@ export default function CustomerBookingPage() {
         {step === 2 && (
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 sm:hidden">
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-slate-600">บริการที่เลือก · {paymentMode === 'monthly' ? 'แพ็กเกจรายเดือน' : 'จ่ายครั้งเดียว'}</p>
               <p className="font-semibold leading-snug text-brand-800">
                 {paymentMode === 'single' ? service : sundayPackage ? 'รายเดือน (หยุดวันอาทิตย์)' : `${monthlyFrequency} ครั้งต่อเดือน · ${monthlyPackageService}`}
               </p>
