@@ -16,17 +16,45 @@ function opensKeyboard(element: EventTarget | null) {
 }
 
 // แป้นพิมพ์เปิดอยู่หรือไม่ (มีช่องพิมพ์ที่โฟกัสอยู่) · ใช้ซ่อนแถบที่ติดด้านล่างจอระหว่างพิมพ์
+// ตรวจ 2 ทาง: (1) มีช่องพิมพ์ที่โฟกัสอยู่ (2) พื้นที่จอที่มองเห็นหดลงมาก (แป้นพิมพ์ดันขึ้นมา — ใช้ได้แม้ตรวจโฟกัสพลาด เช่น ในเบราว์เซอร์ของ LINE)
 export function useKeyboardOpen() {
-  const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [shrunk, setShrunk] = useState(false);
   useEffect(() => {
-    const update = () => setOpen(opensKeyboard(document.activeElement));
+    const update = () => setFocused(opensKeyboard(document.activeElement));
     // focusout เกิดก่อนโฟกัสย้ายไปช่องถัดไป → ตรวจใหม่หลังเหตุการณ์จบ
     const onFocusOut = () => window.setTimeout(update, 0);
-    document.addEventListener('focusin', update);
+    // แตะช่องพิมพ์ → รอแป้นพิมพ์ขึ้นเสร็จ แล้วเลื่อนช่องนั้นมากลางจอ ไม่ให้อยู่ใต้แป้นพิมพ์
+    const onFocusIn = (event: FocusEvent) => {
+      update();
+      const target = event.target;
+      if (opensKeyboard(target) && window.matchMedia('(max-width: 639px)').matches) {
+        window.setTimeout(() => { if (document.activeElement === target) (target as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 350);
+      }
+    };
+    // ความสูงสูงสุดที่เคยเห็น = จอตอนไม่มีแป้นพิมพ์ · หดเกิน 25% ถือว่าแป้นพิมพ์เปิด
+    const viewport = window.visualViewport;
+    let tallest = viewport?.height ?? window.innerHeight;
+    let width = window.innerWidth;
+    const onResize = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      // หมุนจอ (ความกว้างเปลี่ยน) → เริ่มนับความสูงใหม่ ไม่ให้เข้าใจผิดว่าแป้นพิมพ์เปิด
+      if (window.innerWidth !== width) { width = window.innerWidth; tallest = height; }
+      tallest = Math.max(tallest, height);
+      setShrunk(height < tallest * 0.75);
+    };
+    document.addEventListener('focusin', onFocusIn);
     document.addEventListener('focusout', onFocusOut);
-    return () => { document.removeEventListener('focusin', update); document.removeEventListener('focusout', onFocusOut); };
+    viewport?.addEventListener('resize', onResize);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+      viewport?.removeEventListener('resize', onResize);
+      window.removeEventListener('resize', onResize);
+    };
   }, []);
-  return open;
+  return focused || shrunk;
 }
 
 // แถบปุ่มหลักติดด้านล่างจอ (มือถือเท่านั้น) · aboveNav = อยู่เหนือแถบเมนูล่าง
