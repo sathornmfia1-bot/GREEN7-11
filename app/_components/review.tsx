@@ -10,6 +10,8 @@ export function ReviewForm({ onSubmit, onCancel }: { onSubmit: (input: ReviewInp
   const [topics, setTopics] = useState<Partial<Record<ReviewTopic, number>>>({});
   const [issues, setIssues] = useState<string[]>([]);
   const [comment, setComment] = useState('');
+  // มือถือ: ช่องความเห็นยุบไว้หลังปุ่ม "+ เขียนความเห็น" (คอมแสดงตลอด)
+  const [showComment, setShowComment] = useState(false);
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -36,7 +38,7 @@ export function ReviewForm({ onSubmit, onCancel }: { onSubmit: (input: ReviewInp
   return (
     <div>
       <p className="font-semibold text-slate-800">1. งานเป็นอย่างไรบ้าง?</p>
-      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="สถานะงาน">
+      <div className="mt-2 grid grid-cols-3 gap-2" role="radiogroup" aria-label="สถานะงาน">
         {reviewStatuses.map((item) => (
           <button
             key={item.value}
@@ -44,10 +46,10 @@ export function ReviewForm({ onSubmit, onCancel }: { onSubmit: (input: ReviewInp
             role="radio"
             aria-checked={status === item.value}
             onClick={() => { setStatus(item.value); setError(''); }}
-            className={`rounded-xl border px-3 py-2 text-left ${status === item.value ? 'border-brand-500 bg-white ring-2 ring-brand-500/30' : 'border-slate-200 bg-white/70 hover:border-slate-300'}`}
+            className={`rounded-xl border px-3 py-2 text-left max-sm:flex max-sm:min-h-[76px] max-sm:flex-col max-sm:items-center max-sm:justify-center max-sm:px-1 max-sm:text-center ${status === item.value ? 'border-brand-500 bg-white ring-2 ring-brand-500/30' : 'border-slate-200 bg-white/70 hover:border-slate-300'}`}
           >
-            <span className="block font-semibold text-slate-900">{item.icon} {item.label}</span>
-            <span className="block text-xs text-slate-500">{item.hint}</span>
+            <span className="block font-semibold text-slate-900 max-sm:text-sm max-sm:leading-snug"><span className="max-sm:mb-1 max-sm:block max-sm:text-xl">{item.icon}</span> {item.label}</span>
+            <span className="block text-xs text-slate-500 max-sm:hidden">{item.hint}</span>
           </button>
         ))}
       </div>
@@ -70,14 +72,14 @@ export function ReviewForm({ onSubmit, onCancel }: { onSubmit: (input: ReviewInp
                           aria-checked={topics[topic.key] === star}
                           aria-label={`${star} ดาว`}
                           onClick={() => { setTopics((current) => ({ ...current, [topic.key]: star })); setError(''); }}
-                          className={`px-0.5 text-2xl leading-none ${star <= (topics[topic.key] ?? 0) ? 'text-amber-500' : 'text-slate-300'}`}
+                          className={`px-0.5 text-2xl leading-none max-sm:px-1 max-sm:text-[2rem] ${star <= (topics[topic.key] ?? 0) ? 'text-amber-500' : 'text-slate-300'}`}
                         >★</button>
                       ))}
                     </span>
-                    <span className="w-20 text-right text-xs text-slate-500">{topics[topic.key] ? starWords[topics[topic.key]!] : ''}</span>
+                    <span className="w-20 text-right text-xs text-slate-500 max-sm:hidden">{topics[topic.key] ? starWords[topics[topic.key]!] : ''}</span>
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">{topic.hint}</p>
+                <p className="mt-1 text-xs text-slate-500 max-sm:hidden">{topic.hint}</p>
               </div>
             ))}
           </div>
@@ -90,13 +92,14 @@ export function ReviewForm({ onSubmit, onCancel }: { onSubmit: (input: ReviewInp
           {status !== 'no_show' && (
             <div className="mt-2 flex flex-wrap gap-2">
               {reviewIssues.map((issue) => (
-                <button key={issue} type="button" aria-pressed={issues.includes(issue)} onClick={() => toggleIssue(issue)} className={`rounded-full border px-3 py-1 text-xs font-medium ${issues.includes(issue) ? 'border-rose-300 bg-rose-50 text-rose-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+                <button key={issue} type="button" aria-pressed={issues.includes(issue)} onClick={() => toggleIssue(issue)} className={`rounded-full border px-3 py-1 text-xs font-medium max-sm:min-h-[40px] max-sm:px-3.5 max-sm:text-sm ${issues.includes(issue) ? 'border-rose-300 bg-rose-50 text-rose-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
                   {issue}
                 </button>
               ))}
             </div>
           )}
-          <textarea value={comment} onChange={(event) => { setComment(event.target.value); setError(''); }} rows={2} maxLength={500} placeholder={status === 'no_show' ? 'เล่าเหตุการณ์สั้นๆ เช่น รอถึงกี่โมง ติดต่อช่างได้ไหม' : 'เล่าประสบการณ์ หรือคำชมถึงช่าง'} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" />
+          {!showComment && status !== 'no_show' && <button type="button" onClick={() => setShowComment(true)} className="mt-2 min-h-[48px] font-semibold text-brand-700 sm:hidden">+ เขียนความเห็น</button>}
+          <textarea value={comment} onChange={(event) => { setComment(event.target.value); setError(''); }} rows={2} maxLength={500} placeholder={status === 'no_show' ? 'เล่าเหตุการณ์สั้นๆ เช่น รอถึงกี่โมง ติดต่อช่างได้ไหม' : 'เล่าประสบการณ์ หรือคำชมถึงช่าง'} className={`mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none ${showComment || status === 'no_show' ? '' : 'max-sm:hidden'}`} />
         </>
       )}
 

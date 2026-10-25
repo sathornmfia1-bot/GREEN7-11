@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { formatPhone } from '../_lib/rules';
 
 // เบอร์ไทย 0XXXXXXXXX → +66XXXXXXXXX (รูปแบบสากล แอปโทรศัพท์ทุกเครื่องรู้จัก)
-function telHref(phone: string) {
+export function telHref(phone: string) {
   const digits = phone.replace(/\D/g, '');
   return /^0\d{8,9}$/.test(digits) ? `tel:+66${digits.slice(1)}` : `tel:${digits}`;
 }

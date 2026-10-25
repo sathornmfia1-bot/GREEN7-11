@@ -46,11 +46,12 @@ export function WorkerCard({
       {tools.length > 0 && (
         <div className="mt-3 border-t border-slate-100 pt-3">
           <p className="text-xs font-medium text-slate-500">เครื่องมือที่ใช้</p>
-          <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {/* มือถือ: แถวเดียวเลื่อนซ้าย-ขวา · คอม: ตาราง */}
+          <ul className="mt-2 grid grid-cols-2 gap-2 max-sm:-mx-4 max-sm:flex max-sm:overflow-x-auto max-sm:px-4 max-sm:[scrollbar-width:none] sm:grid-cols-3">
             {tools.map((tool) => (
-              <li key={tool} className="flex items-center gap-2 rounded-lg bg-slate-50 p-1.5 pr-2">
+              <li key={tool} className="flex items-center gap-2 rounded-lg bg-slate-50 p-1.5 pr-2 max-sm:shrink-0 max-sm:pr-3">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-white"><EquipmentArt type={tool} className="h-10 w-10" /></span>
-                <span className="text-xs font-medium leading-snug text-slate-700">{equipmentLabel(tool)}</span>
+                <span className="text-xs font-medium leading-snug text-slate-700 max-sm:whitespace-nowrap">{equipmentLabel(tool)}</span>
               </li>
             ))}
           </ul>

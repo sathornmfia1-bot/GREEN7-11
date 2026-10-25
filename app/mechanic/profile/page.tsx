@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { AddressEditor, formatAddress, type AddressDetails } from '../../_components/address';
 import { useMechanic, useRun } from '../../_components/role-shell';
 import { updateMechanicBase } from '../../_server/actions';
@@ -28,6 +29,8 @@ export default function MechanicProfilePage() {
   return (
     <div className="space-y-6">
       <VerificationBanner mechanic={mechanic} />
+      {/* มือถือ: เมนูรายรับย้ายมาอยู่ที่นี่ (แถบเมนูล่างมีไม่เกิน 4 ช่อง) */}
+      <Link href="/mechanic/earnings" className="card flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 font-semibold text-slate-900 sm:hidden"><span>💰 รายรับของฉัน</span><svg viewBox="0 0 24 24" className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg></Link>
       <section className="card p-4 sm:p-6">
         <div className="flex items-center gap-4">
           {mechanic.photoDataUrl

@@ -8,7 +8,8 @@ import { Logo } from './brand';
 import { clearSession, getSessionUserId, roleLabels, type Role } from '../_lib/session';
 import type { AdminAccount, CustomerAccount, MechanicAccount, Result, Snapshot } from '../_lib/types';
 
-export type NavItem = { href: string; label: string; icon: string; badge?: 'notifications' };
+// mobile: false = ไม่แสดงในแถบเมนูล่างของมือถือ (ให้แถบมีไม่เกิน 4 ช่อง) แต่ยังอยู่ในเมนูของคอม
+export type NavItem = { href: string; label: string; icon: string; badge?: 'notifications'; mobile?: boolean };
 
 type ShellContext = {
   userId: string;
@@ -147,9 +148,11 @@ export function RoleShell({ role, nav, children }: { role: Role; nav: NavItem[];
     router.replace('/');
   }
 
+  const mobileNav = nav.filter((item) => item.mobile !== false);
+
   return (
     <RoleShellContext.Provider value={{ userId, data, refresh, notice, run }}>
-      <div className="min-h-screen bg-slate-50/60 pb-20 sm:pb-0">
+      <div className="min-h-screen bg-slate-50/60 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-8">
             <div className="flex min-w-0 items-center gap-3">
@@ -185,9 +188,9 @@ export function RoleShell({ role, nav, children }: { role: Role; nav: NavItem[];
         )}
 
         {/* มือถือ: เมนูด้านล่างจอ */}
-        <nav aria-label={`เมนู${roleLabels[role]}`} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden" style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}>
-          {nav.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? 'page' : undefined} className={`relative flex min-w-0 flex-col items-center gap-0.5 px-1 py-2 text-[11px] font-medium ${isActive(item.href) ? 'text-brand-700' : 'text-slate-500'}`}>
+        <nav aria-label={`เมนู${roleLabels[role]}`} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden" style={{ gridTemplateColumns: `repeat(${mobileNav.length}, minmax(0, 1fr))` }}>
+          {mobileNav.map((item) => (
+            <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? 'page' : undefined} className={`relative flex h-16 min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium ${isActive(item.href) ? 'text-brand-700' : 'text-slate-500'}`}>
               {/* ตัวอักษรใหญ่ของระบบ (เช่น Samsung) ขยายเมนูได้ไม่เกิน 1.15 เท่า และตัดคำที่ยาวเกินช่อง ไม่ให้ทับกัน */}
               <span aria-hidden="true" className="fit-zoom text-lg leading-none">{item.icon}</span>
               <span className="fit-zoom block w-full truncate text-center">{item.label}</span>

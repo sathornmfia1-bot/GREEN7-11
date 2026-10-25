@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { formatAddress, mapQuery } from '../../_components/address';
-import { formatThaiDate } from '../../_components/date-input';
+import { formatThaiDate, isoDateFromToday } from '../../_components/date-input';
 import { InspectionPanel } from '../../_components/inspection';
-import { CallButton } from '../../_components/call-button';
+import { CallButton, telHref } from '../../_components/call-button';
+import { Accordion, SlideToConfirm, mobileCtaClass } from '../../_components/mobile';
 import { PhotoGallery } from '../../_components/photo-gallery';
 import { ReviewSummary } from '../../_components/review';
 import { CompletionPhotoForm } from '../_components/completion-photos';
@@ -14,7 +15,7 @@ import { heightText, netPayout } from '../../_components/pricing';
 import { useData, useMechanic, useRun } from '../../_components/role-shell';
 import { advanceWorkStage, cancelJobByMechanic, releasePayout, requestAdjustment, saveInspection, simulateEscrowWait } from '../../_server/actions';
 import {
-  canMechanicCancel, canReleasePayout, escrowReleaseDays, formatLocalDateTime, jobWhen, mechanicCancelDaysBefore,
+  adjustmentBlockReason, canMechanicCancel, canReleasePayout, escrowReleaseDays, formatLocalDateTime, jobWhen, mechanicCancelDaysBefore,
   mechanicCancelDeadline, money, payoutAvailableAt, workStageActions, workStageLabels,
 } from '../../_lib/rules';
 
@@ -134,6 +135,171 @@ function MyJobCard({ job }: { job: Job }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// มือถือ: การ์ดงานแบบกระชับ · ปุ่มนำทาง/โทร 48 dp · เลื่อนเพื่อยืนยันแต่ละขั้น · รายละเอียดยุบไว้
+// ---------------------------------------------------------------------------
+
+const slideLabels = { matched: 'แจ้งว่าถึงแล้ว', arrived: 'เริ่มทำงาน', working: 'ทำงานเสร็จ' } as const;
+
+function MobileJobCard({ job }: { job: Job }) {
+  const db = useData();
+  const mechanic = useMechanic();
+  const run = useRun();
+  const [advancing, setAdvancing] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const stage = job.workStage ?? 'matched';
+  // "ขอปรับราคา" → เปิดหัวข้อตรวจงาน/ปรับราคา แล้วเลื่อนไปที่หัวข้อนั้น
+  const openInspection = () => {
+    const section = document.getElementById(`inspect-${job.id}`) as HTMLDetailsElement | null;
+    if (!section) return;
+    section.open = true;
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const adjustments = db.adjustments.filter((item) => item.jobId === job.id);
+  const blocked = adjustments.some((item) => item.customerDecision === 'pending' || item.settlement === 'awaiting_payment');
+  const review = db.reviews.find((item) => item.jobId === job.id);
+  const canAdjust = !adjustmentBlockReason(stage, Boolean(job.isMonthly), adjustments.length);
+  const releasable = stage === 'done' && canReleasePayout(job, Boolean(review));
+  const mapUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapQuery(job.address))}&travelmode=driving`;
+
+  async function advance() {
+    // ทำงานเสร็จ → เปิดหน้าส่งงาน (ต้องแนบรูปอย่างน้อย 5 รูป)
+    if (stage === 'working') { setFinishing(true); return; }
+    setAdvancing(true);
+    try { await run(advanceWorkStage(job.id)); } finally { setAdvancing(false); }
+  }
+
+  return (
+    <article className="card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs text-slate-500">{jobWhen(job)}</p>
+          <p className="mt-0.5 font-semibold leading-snug text-slate-900">{job.service}</p>
+          <p className="text-sm text-slate-600">{money(job.area)} ตร.ว. · {heightText(job.service, job.grassHeight)}</p>
+        </div>
+        <p className="shrink-0 font-display text-2xl font-bold text-brand-700">฿{money(netPayout(job.price))}</p>
+      </div>
+      <span className="mt-2 inline-block badge bg-brand-100 text-brand-800">{workStageLabels[stage]}</span>
+
+      <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-slate-900">{job.firstName} {job.lastName}</p>
+          <p className="truncate text-sm text-slate-600">{job.address.province === 'กรุงเทพมหานคร' ? 'เขต' : 'อ.'}{job.address.amphoe}</p>
+        </div>
+        <a href={mapUrl} target="_blank" rel="noopener noreferrer" aria-label="นำทาง" className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-brand-700 text-brand-700">
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 11 18-8-8 18-2-8z" /></svg>
+        </a>
+        {job.phone && (
+          <a href={telHref(job.phone)} aria-label="โทรหาลูกค้า" className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-700 text-white">
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></svg>
+          </a>
+        )}
+      </div>
+
+      {stage === 'done' && review && <div className="mt-3 rounded-lg bg-amber-50 p-3"><ReviewSummary review={review} title="ลูกค้ารีวิว" /></div>}
+      {stage === 'done' && Boolean(job.completionPhotos?.length) && (
+        <div className="mt-3">
+          <p className="mb-2 text-sm font-semibold text-slate-700">รูปงานที่ส่ง · {job.completionPhotos!.length} รูป</p>
+          <PhotoGallery photos={job.completionPhotos!} label="รูปงานที่เสร็จแล้ว" />
+        </div>
+      )}
+
+      <div className="-mx-4 mt-3 border-t border-slate-100">
+        <Accordion title="ที่อยู่เต็ม · เบอร์โทร">
+          <p className="text-sm text-slate-700">{formatAddress(job.address)}</p>
+          <div className="mt-3 text-sm"><CallButton phone={job.phone} /></div>
+          {Boolean(job.photos?.length) && <div className="mt-3"><p className="mb-2 text-sm font-semibold text-slate-700">รูปสนามจากลูกค้า</p><PhotoGallery photos={job.photos!} label="รูปสนามหญ้า" /></div>}
+        </Accordion>
+        <Accordion id={`inspect-${job.id}`} title="ตรวจงานด้วย AI · ปรับราคา">
+          <InspectionPanel
+            job={job}
+            adjustments={adjustments}
+            inspection={db.inspections.find((item) => item.jobId === job.id)}
+            onAnalyze={async (beforeUrl, afterUrl) => { await run(saveInspection(job.id, beforeUrl, afterUrl)); }}
+            onRequestAdjustment={(request) => { run(requestAdjustment(job.id, request)); }}
+          />
+        </Accordion>
+        {stage === 'done' && (
+          <Accordion title={job.payoutReleasedAt ? 'เงินของคุณ · โอนแล้ว' : 'เงินของคุณ · Escrow'}>
+            <p className="text-sm text-slate-600">
+              {job.payoutReleasedAt
+                ? `โอนเข้า ${mechanic.bankName} xxx-${mechanic.accountLast4} เมื่อ ${formatLocalDateTime(job.payoutReleasedAt)}`
+                : review ? 'ลูกค้ารีวิวแล้ว · โอนเงินได้ทันที'
+                  : releasable ? `ครบ ${escrowReleaseDays} วันหลังทำงานเสร็จ · โอนเงินได้แล้ว`
+                    : `โอนได้เมื่อลูกค้ารีวิว หรือหลัง ${formatLocalDateTime(payoutAvailableAt(job))}`}
+            </p>
+            {!job.payoutReleasedAt && !releasable && <button type="button" onClick={() => { run(simulateEscrowWait(job.id)); }} className="mt-2 min-h-[44px] text-xs text-slate-500 underline">(ทดสอบ) จำลองเวลาผ่านไป {escrowReleaseDays} วัน</button>}
+          </Accordion>
+        )}
+        {stage === 'matched' && (
+          <Accordion title="ยกเลิกงาน">
+            <p className="text-sm text-slate-600">{canMechanicCancel(job) ? `ยกเลิกได้ถึงวันที่ ${formatThaiDate(mechanicCancelDeadline(job))} · งานจะกลับไปที่ Job Pool` : `ยกเลิกไม่ได้ · ต้องยกเลิกก่อนวันนัดหมาย ${mechanicCancelDaysBefore} วัน`}</p>
+            {canMechanicCancel(job) && (confirmCancel
+              ? <div className="mt-3 flex gap-2"><button type="button" onClick={() => { setConfirmCancel(false); run(cancelJobByMechanic(job.id)); }} className="h-12 flex-1 rounded-xl bg-rose-700 font-semibold text-white">ยืนยันยกเลิก</button><button type="button" onClick={() => setConfirmCancel(false)} className="h-12 flex-1 rounded-xl border border-slate-300 font-semibold text-slate-700">ไม่ยกเลิก</button></div>
+              : <button type="button" onClick={() => setConfirmCancel(true)} className="mt-3 h-12 w-full rounded-xl border-2 border-rose-200 font-semibold text-rose-700">ยกเลิกงานนี้</button>)}
+          </Accordion>
+        )}
+      </div>
+
+      {/* ปุ่มหลักของขั้นงาน อยู่ล่างสุดของการ์ด ใกล้นิ้วโป้ง */}
+      {stage !== 'done' && (
+        <div className="mt-3 space-y-2">
+          {canAdjust && <button type="button" onClick={openInspection} className="mx-auto block min-h-[44px] px-3 font-semibold text-brand-700 underline underline-offset-4">ขอปรับราคา (ได้ 1 ครั้ง)</button>}
+          {blocked && <p className="text-center text-sm text-amber-700">รอลูกค้าตอบคำขอปรับราคา / ชำระส่วนต่างก่อน</p>}
+          <SlideToConfirm label={slideLabels[stage]} onConfirm={advance} disabled={blocked} busy={advancing} />
+        </div>
+      )}
+      {stage === 'done' && !job.payoutReleasedAt && (
+        <button type="button" onClick={() => run(releasePayout(job.id))} disabled={!releasable} className={`${mobileCtaClass} mt-3 bg-brand-700 hover:bg-brand-800`}>💸 โอนเงิน ฿{money(netPayout(job.price))} เข้าบัญชี</button>
+      )}
+
+      {finishing && stage === 'working' && (
+        <CompletionPhotoForm
+          variant="screen"
+          onCancel={() => setFinishing(false)}
+          onSubmit={async (photos) => {
+            const result = await run(advanceWorkStage(job.id, photos));
+            if (result.ok) setFinishing(false);
+            return result.ok;
+          }}
+        />
+      )}
+    </article>
+  );
+}
+
+type JobTab = 'today' | 'upcoming' | 'done';
+
+function MobileJobs({ jobs }: { jobs: Job[] }) {
+  const [tab, setTab] = useState<JobTab>('today');
+  const today = isoDateFromToday(0);
+  const lists: Record<JobTab, Job[]> = {
+    today: jobs.filter((job) => job.workStage !== 'done' && job.date <= today),
+    upcoming: jobs.filter((job) => job.workStage !== 'done' && job.date > today),
+    done: jobs.filter((job) => job.workStage === 'done'),
+  };
+  const tabs: { id: JobTab; label: string }[] = [{ id: 'today', label: 'วันนี้' }, { id: 'upcoming', label: 'ถัดไป' }, { id: 'done', label: 'เสร็จแล้ว' }];
+  const list = lists[tab];
+  return (
+    <div>
+      <h1 className="font-display text-2xl font-semibold text-slate-900">งานของฉัน</h1>
+      <div role="tablist" aria-label="ช่วงเวลางาน" className="-mx-4 mt-2 flex border-b border-slate-200 px-2">
+        {tabs.map((item) => (
+          <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)} className={`h-12 flex-1 border-b-[3px] px-1 text-[15px] ${tab === item.id ? 'border-brand-700 font-semibold text-brand-800' : 'border-transparent text-slate-500'}`}>
+            {item.label} ({lists[item.id].length})
+          </button>
+        ))}
+      </div>
+      {list.length ? (
+        <div className="mt-4 space-y-4">{list.map((job) => <MobileJobCard key={job.id} job={job} />)}</div>
+      ) : (
+        <p className="card mt-4 p-6 text-center text-sm text-slate-600">{tab === 'done' ? 'ยังไม่มีงานที่เสร็จ' : 'ไม่มีงานในช่วงนี้'} · <Link href="/mechanic" className="font-semibold text-brand-700 underline">ดูงานใหม่</Link></p>
+      )}
+    </div>
+  );
+}
+
 export default function MechanicJobsPage() {
   const db = useData();
   const mechanic = useMechanic();
@@ -144,7 +310,11 @@ export default function MechanicJobsPage() {
   const cancelledByCustomer = db.jobs.filter((job) => job.mechanicId === mechanic.id && job.cancelledAt);
 
   return (
-    <div>
+    <>
+    <div className="sm:hidden">
+      <MobileJobs jobs={mine} />
+    </div>
+    <div className="max-sm:hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-slate-900">งานของฉัน</h1>
         <span className="badge bg-brand-100 text-brand-700">{mine.length} งาน</span>
@@ -163,5 +333,6 @@ export default function MechanicJobsPage() {
         </section>
       )}
     </div>
+    </>
   );
 }
