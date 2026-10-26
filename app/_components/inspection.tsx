@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { resizeImage } from '../_lib/image';
 import { adjustmentBlockReason } from '../_lib/rules';
 import type { Inspection, Job, QuoteAdjustment } from '../_lib/types';
-import { debrisRatePerHour, grassHeightLabels, netPayout, pricePerVisit } from './pricing';
+import { debrisRatePerHour, fixedHeightLabel, grassHeightLabels, netPayout, pricePerVisit, usesFixedHeight } from './pricing';
 
 const money = (value: number) => new Intl.NumberFormat('th-TH').format(value);
 
@@ -113,7 +113,7 @@ export function InspectionPanel({
   function applyAiResult() {
     if (!aiResult) return;
     setActualArea(String(aiResult.estimatedArea));
-    setActualHeight(aiResult.grassHeight);
+    setActualHeight(usesFixedHeight(job.service) ? 0 : aiResult.grassHeight);
     setDebrisHours(aiResult.debrisHours);
     setFormOpen(true);
   }
@@ -167,7 +167,12 @@ export function InspectionPanel({
           <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <label className="block text-sm font-medium text-slate-700">พื้นที่จริง (ตารางวา)<input type="number" min="1" value={actualArea} onChange={(event) => setActualArea(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
-              <label className="block text-sm font-medium text-slate-700">ความสูงหญ้าจริง<select value={actualHeight} onChange={(event) => setActualHeight(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none">{grassHeightLabels.map((label, index) => <option key={label} value={index}>{label}</option>)}</select></label>
+              <label className="block text-sm font-medium text-slate-700">ความสูงหญ้าจริง
+                {/* แต่งกิ่งอย่างเดียว / ตัดสวนรกร้าง: ราคาไม่คิดตามความสูงหญ้า จึงเปลี่ยนไม่ได้ */}
+                {usesFixedHeight(job.service)
+                  ? <select value={0} disabled className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-slate-600"><option value={0}>{fixedHeightLabel(job.service)}</option></select>
+                  : <select value={actualHeight} onChange={(event) => setActualHeight(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none">{grassHeightLabels.map((label, index) => <option key={label} value={index}>{label}</option>)}</select>}
+              </label>
               <label className="block text-sm font-medium text-slate-700">เคลียร์เศษวัสดุ (ชม.)<input type="number" min="0" step="1" value={debrisHours} onChange={(event) => setDebrisHours(Math.max(0, Math.round(Number(event.target.value) || 0)))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" /><span className="mt-0.5 block text-xs font-normal text-slate-500">฿{debrisRatePerHour}/ชม.</span></label>
             </div>
             <label className="mt-3 block text-sm font-medium text-slate-700">หมายเหตุถึงลูกค้า (ไม่บังคับ)<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="เช่น มีกิ่งไม้ใหญ่หักหลังบ้าน" className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>

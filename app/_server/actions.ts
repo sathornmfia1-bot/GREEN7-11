@@ -2,6 +2,7 @@
 
 import { AccessError, jobPhotosSelect, jobSelect, loadPricing, mechanicSelect, must, notify, requireUser, sb, toAdjustment, toJob, toJobPhotos, toMechanic, toNotification, type UserRow } from './core';
 import type { AddressDetails } from '../_components/address';
+import { usesFixedHeight } from '../_components/pricing';
 import { cleanEquipment } from '../_lib/equipment';
 import { hashSecret, lockMinutes, maxFailedAttempts, maxResetAttempts, passwordProblem, resetCodeMinutes, sixDigitCode, verifySecret } from './password';
 import { overallRating, reviewProblem, reviewStatuses, type ReviewInput } from '../_lib/review';
@@ -396,12 +397,15 @@ export async function createBooking(input: BookingInput) {
     let serviceName: string;
     let packageCode: string | null = null;
     let unitPrice: number;
+    let grassLevel = input.grassHeight;
     if (input.mode === 'single') {
       const service = pricing.services.find((item) => item.name === input.serviceName);
       if (!service) return fail('ไม่พบประเภทบริการ');
       serviceCode = service.code;
       serviceName = service.name;
-      unitPrice = pricing.pricePerVisit(service.code, area, input.grassHeight);
+      // แต่งกิ่งอย่างเดียว / ตัดสวนรกร้าง: ไม่คิดตามความสูงหญ้า (ระดับ 0 = × 1.0)
+      if (usesFixedHeight(service.name)) grassLevel = 0;
+      unitPrice = pricing.pricePerVisit(service.code, area, grassLevel);
     } else {
       if (![3, 6, 12].includes(input.prepaidMonths)) return fail('จำนวนเดือนที่ชำระล่วงหน้าไม่ถูกต้อง');
       const pack = input.sundayPackage
@@ -425,14 +429,14 @@ export async function createBooking(input: BookingInput) {
     const booking = must(await sb().from('bookings').insert({
       customer_id: me.id, service_address_id: address.id, pricing_mode: input.mode,
       service_type_code: input.mode === 'single' ? serviceCode : null, monthly_package_code: packageCode, prepaid_months: input.mode === 'monthly' ? input.prepaidMonths : null,
-      area_sq_wah: area, grass_height_level: input.grassHeight, first_appointment_date: input.date, unit_price: unitPrice, total_amount: total,
-      price_breakdown: { serviceCode, area, grassHeight: input.grassHeight, unitPrice, prepaidMonths: input.prepaidMonths }, status: 'paid',
+      area_sq_wah: area, grass_height_level: grassLevel, first_appointment_date: input.date, unit_price: unitPrice, total_amount: total,
+      price_breakdown: { serviceCode, area, grassHeight: grassLevel, unitPrice, prepaidMonths: input.prepaidMonths }, status: 'paid',
     }).select('id').single());
     must(await sb().from('payments').insert({ booking_id: booking.id, payer_id: me.id, type: 'booking', amount: total, qr_reference: `MOCKQR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, status: 'paid', paid_at: new Date().toISOString() }));
     if (input.photos.length) must(await sb().from('booking_photos').insert(input.photos.map((url, index) => ({ booking_id: booking.id, url, sort_order: index }))));
     const job = must(await sb().from('jobs').insert({
       booking_id: booking.id, customer_id: me.id, title: input.mode === 'single' ? 'งานจ่ายครั้งเดียว' : 'งานแพ็กเกจรายเดือน', is_monthly: input.mode === 'monthly',
-      service_name: serviceName, service_type_code: serviceCode, area_sq_wah: area, grass_height_level: input.grassHeight, appointment_date: input.date,
+      service_name: serviceName, service_type_code: serviceCode, area_sq_wah: area, grass_height_level: grassLevel, appointment_date: input.date,
       address_line: address.address_line, province: address.province, amphoe: address.amphoe, district: address.district, zipcode: address.zipcode, lat: address.lat, lng: address.lng,
       quote_amount: total, final_amount: total, platform_fee_percent: pricing.platformFeePercent,
     }).select('id').single());
@@ -714,6 +718,8 @@ export async function requestAdjustment(jobId: string, request: { newAmount: num
     if (blocked) return fail(blocked);
     const pricing = await loadPricing();
     // ตรวจราคาใหม่จากตารางราคาในฐานข้อมูล (ไม่เชื่อตัวเลขจากเบราว์เซอร์)
+    // แต่งกิ่งอย่างเดียว / ตัดสวนรกร้าง: ราคาไม่คิดตามความสูงหญ้า จึงปรับความสูงไม่ได้
+    if (usesFixedHeight(job.service_name) && Number(request.newGrassHeight) !== 0) return fail('บริการนี้ไม่คิดราคาตามความสูงหญ้า');
     const jobRow = must(await sb().from('jobs').select('service_type_code, extra_charges').eq('id', jobId).single());
     const debris = Math.max(0, Number(request.newExtraCharges) - Number(jobRow.extra_charges));
     const expected = pricing.pricePerVisit(jobRow.service_type_code, request.newArea, request.newGrassHeight) + Number(jobRow.extra_charges) + debris;

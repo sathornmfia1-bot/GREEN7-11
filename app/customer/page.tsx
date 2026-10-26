@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AddressMap, formatAddress } from '../_components/address';
 import { DateInput, formatThaiDate, todayIsoDate } from '../_components/date-input';
-import { baseAreaWa, isPruningOnly, monthlyDiscounts, monthlyPackagePrice, monthlyPackageService, pricePerVisit, pricingOptions, shrubHeightLabel } from '../_components/pricing';
+import { baseAreaWa, fixedHeightLabel, isPruningOnly, monthlyDiscounts, monthlyPackagePrice, monthlyPackageService, pricePerVisit, pricingOptions, usesFixedHeight } from '../_components/pricing';
 import { MobileStickyBar, mobileCtaClass } from '../_components/mobile';
 import { useCustomer, useNotice, useRun } from '../_components/role-shell';
 import { resizeImage } from '../_lib/image';
@@ -36,8 +36,9 @@ export default function CustomerBookingPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // แต่งกิ่งอย่างเดียว: ไม่ถามความสูงหญ้า ใช้เกณฑ์พุ่มไม้ (ระดับ 0)
-  const pruningOnly = paymentMode === 'single' && isPruningOnly(service);
-  const heightLevel = pruningOnly ? 0 : grassHeight;
+  // แต่งกิ่งอย่างเดียว / ตัดสวนรกร้าง: ไม่ถามความสูงหญ้า ราคาไม่คูณตามความสูง (ระดับ 0)
+  const fixedHeight = paymentMode === 'single' && usesFixedHeight(service);
+  const heightLevel = fixedHeight ? 0 : grassHeight;
   const total = useMemo(() => {
     if (paymentMode === 'monthly' && sundayPackage) return 14100;
     if (paymentMode === 'single') return pricePerVisit(service, area, heightLevel);
@@ -217,18 +218,18 @@ export default function CustomerBookingPage() {
             {paymentMode === 'monthly' && sundayPackage && <span className="mt-1 block text-xs text-slate-500">แพ็กเกจนี้ราคาไม่ขึ้นกับพื้นที่</span>}
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <label htmlFor="grass-height" className="mb-2 block text-sm font-semibold text-slate-700">{pruningOnly ? 'ความสูงพุ่มไม้' : 'ความสูงหญ้า'}</label>
+            <label htmlFor="grass-height" className="mb-2 block text-sm font-semibold text-slate-700">{fixedHeight && isPruningOnly(service) ? 'ความสูงพุ่มไม้' : 'ความสูงหญ้า'}</label>
             {/* มือถือ: ชิป 3 ตัวแตะเลือก แทนรายการเลื่อนลง */}
-            {!pruningOnly && (
+            {!fixedHeight && (
               <div className="grid grid-cols-3 gap-2 sm:hidden" role="radiogroup" aria-label="ความสูงหญ้า">
                 {['< 6"', '6–12"', '> 12"'].map((label, index) => (
                   <button key={label} type="button" role="radio" aria-checked={heightLevel === index} disabled={paid || (paymentMode === 'monthly' && sundayPackage)} onClick={() => setGrassHeight(index)} className={`h-12 rounded-xl border text-[15px] disabled:opacity-40 ${heightLevel === index ? 'border-2 border-brand-700 bg-brand-50 font-semibold text-brand-800' : 'border-slate-200 bg-white text-slate-800'}`}>{label}</button>
                 ))}
               </div>
             )}
-            <select id="grass-height" value={heightLevel} onChange={(event) => setGrassHeight(Number(event.target.value))} disabled={paid || (paymentMode === 'monthly' && sundayPackage)} className={`w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500 disabled:bg-slate-100 ${pruningOnly ? '' : 'max-sm:hidden'}`}>
-              {pruningOnly
-                ? <option value={0}>{shrubHeightLabel}</option>
+            <select id="grass-height" value={heightLevel} onChange={(event) => setGrassHeight(Number(event.target.value))} disabled={paid || (paymentMode === 'monthly' && sundayPackage)} className={`w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500 disabled:bg-slate-100 ${fixedHeight ? '' : 'max-sm:hidden'}`}>
+              {fixedHeight
+                ? <option value={0}>{fixedHeightLabel(service)}</option>
                 : <><option value={0}>น้อยกว่า 6&quot; × 1.0</option><option value={1}>มากกว่า 6&quot; × 1.5</option><option value={2}>มากกว่า 12&quot; × 2.0</option></>}
             </select>
           </div>

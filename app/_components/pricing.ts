@@ -11,16 +11,25 @@ export const pricingOptions = [
   { name: 'ตัดหญ้าและแต่งกิ่ง ขนทิ้ง', basePrice: 1200, extraPerWa: 4 },
   { name: 'แต่งกิ่งอย่างเดียว ไม่ขนทิ้ง', basePrice: 1000, extraPerWa: 3 },
   { name: 'แต่งกิ่งอย่างเดียว ขนทิ้ง', basePrice: 1200, extraPerWa: 4 },
+  { name: 'ตัดสวนรกร้าง ขนทิ้ง', basePrice: 2000, extraPerWa: 6 },
+  { name: 'ตัดสวนรกร้าง ไม่ขนทิ้ง', basePrice: 1500, extraPerWa: 5 },
 ];
 
 // บริการแต่งกิ่งอย่างเดียวไม่เกี่ยวกับความสูงหญ้า: ใช้เกณฑ์พุ่มไม้สูงน้อยกว่า 2 เมตร (ตัวคูณ × 1.0 = ระดับ 0)
 export const shrubHeightLabel = 'พุ่มไม้สูงน้อยกว่า 2 เมตร';
 export const isPruningOnly = (serviceName: string) => serviceName.startsWith('แต่งกิ่งอย่างเดียว');
+// ตัดสวนรกร้าง: ราคาคงที่ตามพื้นที่ ไม่คิดตัวคูณความสูงหญ้า (ระดับ 0)
+export const overgrownHeightLabel = 'สวนรกร้าง · ราคาคงที่';
+export const isOvergrown = (serviceName: string) => serviceName.startsWith('ตัดสวนรกร้าง');
+
+// บริการที่ไม่ถามความสูงหญ้า (ใช้ระดับ 0 = ตัวคูณ × 1.0 เสมอ)
+export const usesFixedHeight = (serviceName: string) => isPruningOnly(serviceName) || isOvergrown(serviceName);
+export const fixedHeightLabel = (serviceName: string) => (isOvergrown(serviceName) ? overgrownHeightLabel : shrubHeightLabel);
 
 // ข้อความความสูงสำหรับแสดงในรายละเอียดงาน
 export function heightText(serviceName: string, grassHeight: number) {
   // "หญ้ามากกว่า 6"" → "หญ้าสูงกว่า 6"" · "หญ้าน้อยกว่า 6"" → "หญ้าต่ำกว่า 6""
-  return isPruningOnly(serviceName) ? shrubHeightLabel : `หญ้า${grassHeightLabels[grassHeight].replace('มากกว่า', 'สูงกว่า').replace('น้อยกว่า', 'ต่ำกว่า')}`;
+  return usesFixedHeight(serviceName) ? fixedHeightLabel(serviceName) : `หญ้า${grassHeightLabels[grassHeight].replace('มากกว่า', 'สูงกว่า').replace('น้อยกว่า', 'ต่ำกว่า')}`;
 }
 
 // แพ็กเกจรายเดือน (1–3 ครั้งต่อเดือน) คิดราคาต่อครั้งเหมือนจ่ายครั้งเดียว ด้วยบริการนี้
