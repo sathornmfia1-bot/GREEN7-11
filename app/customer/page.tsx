@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AddressMap, formatAddress } from '../_components/address';
 import { DateInput, formatThaiDate, todayIsoDate } from '../_components/date-input';
-import { baseAreaWa, fixedHeightLabel, isPruningOnly, monthlyDiscounts, monthlyPackagePrice, monthlyPackageService, pricePerVisit, pricingOptions, usesFixedHeight } from '../_components/pricing';
+import { baseAreaWa, fixedHeightLabel, isOvergrown, isPruningOnly, monthlyDiscounts, monthlyPackagePrice, monthlyPackageService, pricePerVisit, pricingOptions, usesFixedHeight } from '../_components/pricing';
 import { MobileStickyBar, mobileCtaClass } from '../_components/mobile';
 import { useCustomer, useNotice, useRun } from '../_components/role-shell';
 import { resizeImage } from '../_lib/image';
@@ -227,7 +227,8 @@ export default function CustomerBookingPage() {
                 ))}
               </div>
             )}
-            <select id="grass-height" value={heightLevel} onChange={(event) => setGrassHeight(Number(event.target.value))} disabled={paid || (paymentMode === 'monthly' && sundayPackage)} className={`w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500 disabled:bg-slate-100 ${fixedHeight ? '' : 'max-sm:hidden'}`}>
+            {/* ตัดสวนรกร้าง: แสดง "มากกว่า 12"" ในช่องที่เปลี่ยนไม่ได้ */}
+            <select id="grass-height" value={heightLevel} onChange={(event) => setGrassHeight(Number(event.target.value))} disabled={paid || (paymentMode === 'monthly' && sundayPackage) || (fixedHeight && isOvergrown(service))} className={`w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 max-sm:h-12 ${fixedHeight ? '' : 'max-sm:hidden'}`}>
               {fixedHeight
                 ? <option value={0}>{fixedHeightLabel(service)}</option>
                 : <><option value={0}>น้อยกว่า 6&quot; × 1.0</option><option value={1}>มากกว่า 6&quot; × 1.5</option><option value={2}>มากกว่า 12&quot; × 2.0</option></>}

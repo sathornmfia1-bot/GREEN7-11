@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { BottomSheet, MobileStickyBar, mobileCtaClass } from './mobile';
-import { fixedHeightLabel, grassHeightLabels, isPruningOnly, pricePerVisit, pricingOptions, usesFixedHeight } from './pricing';
+import { fixedHeightLabel, grassHeightLabels, isOvergrown, isPruningOnly, pricePerVisit, pricingOptions, usesFixedHeight } from './pricing';
 
 const money = (value: number) => new Intl.NumberFormat('th-TH').format(value);
 // มือถือ: ปุ่ม − / + ปรับพื้นที่ทีละ 10 ตารางวา
@@ -48,7 +48,8 @@ export function PriceEstimator() {
           </div>
           <div>
             <label className={labelClass} htmlFor="estimate-height">{fixedHeight && isPruningOnly(service) ? 'ความสูงพุ่มไม้' : 'ความสูงหญ้า'}</label>
-            <select id="estimate-height" value={fixedHeight ? 0 : grassHeight} onChange={(event) => { setGrassHeight(Number(event.target.value)); setShown(false); }} className="w-full rounded-full bg-transparent px-4 py-2.5 text-sm text-slate-700 focus:outline-none max-sm:h-[52px] max-sm:rounded-2xl max-sm:border max-sm:border-slate-200 max-sm:text-base sm:w-auto sm:rounded-none sm:border-l sm:border-slate-200">
+            {/* ตัดสวนรกร้าง: แสดง "มากกว่า 12"" ในช่องที่เปลี่ยนไม่ได้ */}
+            <select id="estimate-height" value={fixedHeight ? 0 : grassHeight} disabled={isOvergrown(service)} onChange={(event) => { setGrassHeight(Number(event.target.value)); setShown(false); }} className="w-full rounded-full bg-transparent px-4 py-2.5 text-sm text-slate-700 focus:outline-none disabled:cursor-not-allowed disabled:text-slate-500 max-sm:h-[52px] max-sm:rounded-2xl max-sm:border max-sm:border-slate-200 max-sm:text-base max-sm:disabled:bg-slate-100 sm:w-auto sm:rounded-none sm:border-l sm:border-slate-200">
               {fixedHeight
                 ? <option value={0}>{fixedHeightLabel(service)}</option>
                 : grassHeightLabels.map((label, index) => <option key={label} value={index}>หญ้าสูง{label}</option>)}
