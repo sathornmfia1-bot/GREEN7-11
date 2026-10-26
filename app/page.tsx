@@ -29,7 +29,7 @@ const features = [
 // escrow-thai-banknotes-box.jpg จาก Pixabay (Pixabay Content License) และ price-agreement.jpg จาก Unsplash (Unsplash License) — ใช้ได้ฟรีเชิงพาณิชย์
 // รูปธนบัตรไทยมีพระบรมฉายาลักษณ์: จัดตำแหน่งให้เห็นธนบัตรทั้งใบ ไม่ตัดผ่านพระบรมฉายาลักษณ์
 const assurances = [
-  { title: 'ช่างผ่านการตรวจสอบตัวตน', body: 'ยืนยันเบอร์โทร บัตรประชาชน และบัญชีธนาคาร', image: '/features/app-phone.jpg', alt: 'มือถือเปิดดูข้อมูลบนโทรศัพท์', position: 'object-[42%_45%]' },
+  { title: 'ช่างผ่านการตรวจสอบตัวตน', body: 'ยืนยันเบอร์โทร บัตรประชาชน และบัญชีธนาคาร', image: '/features/happy-lawn.jpg', alt: 'สนามหญ้าหน้าบ้านสีเขียวที่ตัดแต่งเรียบร้อย', position: 'object-[50%_15%]' },
   { title: 'เงินพักใน Escrow จนคุณพอใจ', body: 'โอนให้ช่างเมื่อรีวิว หรือครบ 2 วันหลังงานเสร็จ', image: '/features/escrow-thai-banknotes-box.jpg', alt: 'ธนบัตรไทยใบ 100 บาทและ 500 บาทวางอยู่ในหีบไม้', position: 'object-[50%_100%]' },
   { title: 'ราคาตามตาราง', body: 'ปรับราคาหน้างานได้เมื่อคุณกดยืนยันเท่านั้น', image: '/features/price-agreement.jpg', alt: 'สองฝ่ายจับมือตกลงกันเหนือเอกสารใบราคา', position: 'object-[50%_45%]' },
 ];
