@@ -26,10 +26,12 @@ const features = [
 ] as const;
 
 // การันตีที่ระบบทำจริง (ไม่ใช่รีวิวหรือคะแนน) · รูปประกอบจาก public/features
+// escrow-thai-banknotes-box.jpg จาก Pixabay (Pixabay Content License) และ price-agreement.jpg จาก Unsplash (Unsplash License) — ใช้ได้ฟรีเชิงพาณิชย์
+// รูปธนบัตรไทยมีพระบรมฉายาลักษณ์: จัดตำแหน่งให้เห็นธนบัตรทั้งใบ ไม่ตัดผ่านพระบรมฉายาลักษณ์
 const assurances = [
   { title: 'ช่างผ่านการตรวจสอบตัวตน', body: 'ยืนยันเบอร์โทร บัตรประชาชน และบัญชีธนาคาร', image: '/features/app-phone.jpg', alt: 'มือถือเปิดดูข้อมูลบนโทรศัพท์', position: 'object-[42%_45%]' },
-  { title: 'เงินพักใน Escrow จนคุณพอใจ', body: 'โอนให้ช่างเมื่อรีวิว หรือครบ 2 วันหลังงานเสร็จ', image: '/features/happy-lawn.jpg', alt: 'สนามหญ้าที่ตัดเสร็จเรียบเป็นลายสวยงามหน้าบ้าน', position: 'object-[50%_75%]' },
-  { title: 'ราคาตามตาราง', body: 'ปรับราคาหน้างานได้เมื่อคุณกดยืนยันเท่านั้น', image: '/features/verified-mechanic.jpg', alt: 'ช่างมืออาชีพกำลังเข็นรถตัดหญ้าบนสนามหญ้าหน้าบ้าน', position: 'object-[40%_60%]' },
+  { title: 'เงินพักใน Escrow จนคุณพอใจ', body: 'โอนให้ช่างเมื่อรีวิว หรือครบ 2 วันหลังงานเสร็จ', image: '/features/escrow-thai-banknotes-box.jpg', alt: 'ธนบัตรไทยใบ 100 บาทและ 500 บาทวางอยู่ในหีบไม้', position: 'object-[50%_100%]' },
+  { title: 'ราคาตามตาราง', body: 'ปรับราคาหน้างานได้เมื่อคุณกดยืนยันเท่านั้น', image: '/features/price-agreement.jpg', alt: 'สองฝ่ายจับมือตกลงกันเหนือเอกสารใบราคา', position: 'object-[50%_45%]' },
 ];
 
 // การ์ดการันตี: รูปด้านบน + หัวข้อ + คำอธิบาย (คอม 3 คอลัมน์ · มือถือใช้ในแถบเลื่อนซ้าย-ขวา)
@@ -38,10 +40,13 @@ function AssuranceCard({ item, compact = false }: { item: (typeof assurances)[nu
     <article className="h-full overflow-hidden rounded-2xl bg-white shadow-soft ring-1 ring-slate-100">
       <div className={`relative ${compact ? 'aspect-[16/10]' : 'aspect-[16/9]'}`}>
         <Image src={item.image} alt={item.alt} fill sizes={compact ? '60vw' : '(min-width: 640px) 300px, 100vw'} className={`object-cover ${item.position}`} />
-        <span aria-hidden="true" className="absolute bottom-2 left-2 flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white shadow-soft ring-2 ring-white">✓</span>
       </div>
       <div className={compact ? 'p-3' : 'p-4'}>
-        <h3 className={`font-semibold leading-snug text-slate-900 ${compact ? 'text-sm' : 'text-base'}`}>{item.title}</h3>
+        {/* เครื่องหมายถูกอยู่หน้าหัวข้อ ไม่วางทับบนรูป (รูปธนบัตรมีพระบรมฉายาลักษณ์) */}
+        <h3 className={`flex items-start gap-2 font-semibold leading-snug text-slate-900 ${compact ? 'text-sm' : 'text-base'}`}>
+          <span aria-hidden="true" className={`flex shrink-0 items-center justify-center rounded-full bg-brand-600 font-bold text-white ${compact ? 'h-5 w-5 text-[11px]' : 'h-6 w-6 text-xs'}`}>✓</span>
+          {item.title}
+        </h3>
         <p className={`mt-1 text-slate-600 ${compact ? 'text-xs' : 'text-sm'}`}>{item.body}</p>
       </div>
     </article>
