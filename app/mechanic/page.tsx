@@ -43,6 +43,9 @@ export default function MechanicJobPoolPage() {
                 <span className="font-medium text-slate-600">📅 {jobWhen(job)} · {job.title}</span>
                 <span className="badge shrink-0 bg-amber-100 text-amber-700">{job.status}</span>
               </div>
+              {job.offeredToMe && job.offerExpiresAt && (
+                <p className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-medium text-emerald-800">⭐ ลูกค้าประจำของคุณ · เสนอให้คุณก่อนถึง {new Date(job.offerExpiresAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })} น. แล้วจึงเปิดให้ช่างทุกคน</p>
+              )}
               <div className="px-4 pt-3">
                 <div className="flex items-start justify-between gap-3">
                   <p className="font-semibold text-slate-900">{job.service} <span className="whitespace-nowrap text-slate-600">{money(job.area)} ตารางวา</span> <span className="whitespace-nowrap text-slate-600">· {heightText(job.service, job.grassHeight)}</span></p>

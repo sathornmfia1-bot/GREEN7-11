@@ -42,7 +42,7 @@ export type NotificationType =
   | 'job_matched' | 'mechanic_arrived' | 'work_started' | 'work_completed_review_request'
   | 'adjustment_requested' | 'adjustment_accepted' | 'adjustment_rejected' | 'adjustment_expired' | 'adjustment_difference_paid'
   | 'job_cancelled_by_customer' | 'job_cancelled_by_mechanic' | 'refund_completed' | 'payout_completed'
-  | 'verification_approved' | 'verification_rejected' | 'booking_paid' | 'review_received';
+  | 'verification_approved' | 'verification_rejected' | 'booking_paid' | 'review_received' | 'visit_offered' | 'visit_rescheduled';
 
 export async function notify(userId: string, type: NotificationType, message: string, jobId?: string) {
   const { error } = await sb().from('notifications').insert({ user_id: userId, type, title: message.slice(0, 200), job_id: jobId ?? null });
@@ -64,7 +64,7 @@ export function toNotification(row: { id: string; user_id: string; job_id: strin
 // แปลงแถวในฐานข้อมูลเป็นข้อมูลที่หน้าเว็บใช้
 // ---------------------------------------------------------------------------
 // ไม่รวมรูปสนามหญ้า (เก็บเป็น data URL ขนาดใหญ่) — โหลดแยกด้วย jobPhotosSelect เฉพาะงานที่หน้าเว็บยังไม่มี
-export const jobSelect = `id, customer_id, mechanic_id, title, is_monthly, service_name, area_sq_wah, grass_height_level, appointment_date, appointment_time,
+export const jobSelect = `id, booking_id, customer_id, mechanic_id, title, is_monthly, service_name, area_sq_wah, grass_height_level, appointment_date, appointment_time,
   address_line, province, amphoe, district, zipcode, lat, lng, quote_amount, extra_charges, final_amount, status, completed_at, cancelled_at, cancelled_by, created_at,
   customer:users!jobs_customer_id_fkey(first_name, last_name, phone),
   booking:bookings!jobs_booking_id_fkey(pricing_mode, prepaid_months),
@@ -123,6 +123,7 @@ export function toJob(row: any, options: { showPhone: boolean }): Job {
     cancelledBy: row.cancelled_by ?? undefined,
     refundNote: refund ? `คืนเงิน ฿${money(num(refund.amount))} เข้า ${refund.bank_name} xxx-${refund.bank_account_last4} (${refund.bank_account_name})` : undefined,
     status: statusLabel[row.status] ?? row.status,
+    bookingId: row.booking_id,
   };
 }
 
@@ -175,7 +176,7 @@ export async function loadPricing() {
   const [services, levels, packages, settings] = await Promise.all([
     sb().from('service_types').select('code, name, base_price, base_area_wa, extra_per_wa').eq('is_active', true),
     sb().from('grass_height_levels').select('level, label, multiplier'),
-    sb().from('monthly_packages').select('code, name, visits_per_month, pricing_service_code, discount_percent, fixed_monthly_price'),
+    sb().from('monthly_packages').select('code, name, base_price, base_area_wa, extra_per_wa').eq('is_active', true),
     sb().from('platform_settings').select('key, value'),
   ]);
   const setting = (key: string, fallback: number) => {
@@ -184,7 +185,9 @@ export async function loadPricing() {
   };
   const serviceRows = must(services) as { code: string; name: string; base_price: number; base_area_wa: number; extra_per_wa: number }[];
   const levelRows = must(levels) as { level: number; label: string; multiplier: number }[];
-  const packageRows = must(packages) as { code: string; name: string; visits_per_month: number | null; pricing_service_code: string | null; discount_percent: number; fixed_monthly_price: number | null }[];
+  // ยังไม่ได้รัน migration แพ็กเกจใหม่ (ไม่มีคอลัมน์ base_price / is_active) → ยังไม่มีแพ็กเกจให้เลือก แต่จ่ายครั้งเดียวใช้ได้ตามปกติ
+  const packagesMissing = packages.error && ['42703', 'PGRST204'].includes((packages.error as { code?: string }).code ?? '');
+  const packageRows = (packagesMissing ? [] : must(packages)) as { code: string; name: string; base_price: number; base_area_wa: number; extra_per_wa: number }[];
 
   function pricePerVisit(serviceCode: string, area: number, grassLevel: number) {
     const service = serviceRows.find((item) => item.code === serviceCode);
@@ -193,10 +196,18 @@ export async function loadPricing() {
     return Math.round((num(service.base_price) + Math.max(area - service.base_area_wa, 0) * num(service.extra_per_wa)) * num(level.multiplier));
   }
 
+  // แพ็กเกจรายเดือน: ราคาต่อครั้งไม่คิดตัวคูณความสูงหญ้า
+  function packageVisitPrice(packageCode: string, area: number) {
+    const pack = packageRows.find((item) => item.code === packageCode);
+    if (!pack) throw new Error('ไม่พบแพ็กเกจ');
+    return Math.round(num(pack.base_price) + Math.max(area - pack.base_area_wa, 0) * num(pack.extra_per_wa));
+  }
+
   return {
     services: serviceRows,
     packages: packageRows,
     pricePerVisit,
+    packageVisitPrice,
     platformFeePercent: setting('platform_fee_percent', 15),
     escrowReleaseDays: setting('escrow_release_days', 2),
     adjustmentExpiryMinutes: setting('adjustment_expiry_minutes', 60),

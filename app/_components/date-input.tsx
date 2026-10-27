@@ -35,7 +35,7 @@ export function formatRelativeThaiDate(isoDate: string) {
 }
 
 // ช่องวันที่ที่แสดงผลเป็น วว/ดด/ปปปป เสมอ ไม่ขึ้นกับภาษาของเบราว์เซอร์ แต่ยังใช้ปฏิทินของเบราว์เซอร์ในการเลือก
-export function DateInput({ id, value, onChange, min, className = '' }: { id?: string; value: string; onChange: (isoDate: string) => void; min?: string; className?: string }) {
+export function DateInput({ id, value, onChange, min, max, className = '' }: { id?: string; value: string; onChange: (isoDate: string) => void; min?: string; max?: string; className?: string }) {
   const pickerRef = useRef<HTMLInputElement>(null);
 
   function openPicker() {
@@ -68,6 +68,7 @@ export function DateInput({ id, value, onChange, min, className = '' }: { id?: s
         aria-hidden="true"
         value={value}
         min={min}
+        max={max}
         onChange={(event) => onChange(event.target.value)}
         className="pointer-events-none absolute bottom-0 left-0 h-0 w-full opacity-0"
       />

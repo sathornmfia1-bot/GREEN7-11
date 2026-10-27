@@ -35,6 +35,26 @@ export type Job = {
   cancelledBy?: string;
   refundNote?: string;
   status: string;
+  bookingId?: string;
+  // แพ็กเกจรายเดือน: นัดที่เท่าไรจากทั้งหมด และงานที่เสนอให้ช่างประจำก่อน (ถึงเวลา offerExpiresAt)
+  visitNo?: number;
+  visitCount?: number;
+  offeredToMe?: boolean;
+  offerExpiresAt?: string;
+};
+
+// นัดของแพ็กเกจรายเดือน (ลูกค้าเห็นของตัวเอง) · jobId มีเมื่อสร้างงานแล้ว
+export type PackageVisit = {
+  id: string;
+  bookingId: string;
+  visitNo: number;
+  cycleNo: number;
+  cycleStart: string;
+  cycleEnd: string;
+  date: string;
+  amount: number;
+  status: 'scheduled' | 'released' | 'cancelled';
+  jobId?: string;
 };
 
 export type QuoteAdjustment = {
@@ -141,6 +161,7 @@ export type Snapshot = {
   notifications: AppNotification[];
   reviews: Review[];
   inspections: Inspection[];
+  visits?: PackageVisit[];
 };
 
 export type Result = { ok: boolean; message: string };

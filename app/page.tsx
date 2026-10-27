@@ -7,7 +7,7 @@ import { HeroScene } from './_components/hero-scene';
 import { LineContactButton } from './_components/line-contact';
 import { Accordion } from './_components/mobile';
 import { PriceEstimator } from './_components/price-estimator';
-import { baseAreaWa, pricingOptions } from './_components/pricing';
+import { baseAreaWa, monthlyPackages, pricingOptions } from './_components/pricing';
 import { RecentBooking } from './_components/recent-booking';
 
 const money = (value: number) => new Intl.NumberFormat('th-TH').format(value);
@@ -120,7 +120,7 @@ export default function Home() {
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-xs text-slate-500">ราคาสำหรับพื้นที่ไม่เกิน {baseAreaWa} ตารางวา · แพ็กเกจรายเดือนลด 10–20%</p>
+            <p className="mt-2 text-xs text-slate-500">ราคาสำหรับพื้นที่ไม่เกิน {baseAreaWa} ตารางวา · แพ็กเกจรายเดือนเลือกได้ 1–4 ครั้งต่อเดือน</p>
           </Accordion>
           <Accordion title="เกี่ยวกับช่างของเรา">
             <ul className="space-y-2 text-sm text-slate-600">
@@ -141,7 +141,7 @@ export default function Home() {
           <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 pb-8 pt-3 text-white md:flex-row md:items-center md:gap-8 md:px-8">
             <p className="shrink-0 font-display text-base font-medium">บริการของเรา...</p>
             <ul className="flex flex-wrap items-center gap-x-7 gap-y-2 font-display text-lg font-bold tracking-tight md:text-xl">
-              {['ตัดหญ้า', 'แต่งกิ่ง', 'ขนทิ้ง', 'แพ็กเกจรายเดือน', 'หยุดวันอาทิตย์'].map((item) => <li key={item}>{item}</li>)}
+              {['ตัดหญ้า', 'แต่งกิ่ง', 'ขนทิ้ง', 'ใส่ปุ๋ย', 'แพ็กเกจรายเดือน'].map((item) => <li key={item}>{item}</li>)}
             </ul>
           </div>
         </div>
@@ -216,7 +216,7 @@ export default function Home() {
               </article>
             ))}
           </div>
-          <p className="mt-6 text-center text-sm text-slate-600">แพ็กเกจรายเดือน 1–3 ครั้งต่อเดือน ลด 10–20% · รายเดือน (หยุดวันอาทิตย์) ฿14,100/เดือน</p>
+          <p className="mt-6 text-center text-sm text-slate-600">แพ็กเกจรายเดือน 1–4 ครั้งต่อเดือน · {monthlyPackages.map((pack) => `${pack.name} ฿${money(pack.basePrice)}/ครั้ง`).join(' · ')}</p>
         </div>
       </section>
 

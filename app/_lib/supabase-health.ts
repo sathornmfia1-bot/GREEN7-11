@@ -1,5 +1,5 @@
 import { getSupabase, isSupabaseConfigured } from './supabase';
-import { grassHeightMultipliers, monthlyDiscounts, platformFeePercent, pricingOptions } from '../_components/pricing';
+import { grassHeightMultipliers, monthlyPackages, platformFeePercent, pricingOptions } from '../_components/pricing';
 
 export type HealthCheck = { label: string; ok: boolean; detail: string };
 export type HealthReport =
@@ -15,7 +15,7 @@ export async function checkSupabase(): Promise<HealthReport> {
   const [services, levels, packages, settings] = await Promise.all([
     supabase.from('service_types').select('name, base_price, extra_per_wa').order('sort_order'),
     supabase.from('grass_height_levels').select('level, multiplier').order('level'),
-    supabase.from('monthly_packages').select('visits_per_month, discount_percent').order('sort_order'),
+    supabase.from('monthly_packages').select('code, base_price, extra_per_wa').eq('is_active', true).order('sort_order'),
     supabase.from('platform_settings').select('key, value'),
   ]);
   const failed = [services, levels, packages, settings].find((result) => result.error);
@@ -33,8 +33,8 @@ export async function checkSupabase(): Promise<HealthReport> {
   const levelRows = levels.data ?? [];
   const levelsMatch = grassHeightMultipliers.every((multiplier, level) => levelRows.some((row) => row.level === level && Number(row.multiplier) === multiplier));
   const packageRows = packages.data ?? [];
-  const packagesMatch = Object.entries(monthlyDiscounts).every(([visits, discount]) => packageRows.some((row) =>
-    row.visits_per_month === Number(visits) && Number(row.discount_percent) === discount * 100));
+  const packagesMatch = monthlyPackages.every((pack) => packageRows.some((row) =>
+    row.code === pack.code && Number(row.base_price) === pack.basePrice && Number(row.extra_per_wa) === pack.extraPerWa));
   const feeRow = (settings.data ?? []).find((row) => row.key === 'platform_fee_percent');
 
   return {
@@ -42,7 +42,7 @@ export async function checkSupabase(): Promise<HealthReport> {
     checks: [
       { label: 'ประเภทบริการ', ok: servicesMatch, detail: `${serviceRows.length} รายการในฐานข้อมูล${servicesMatch ? ' · ราคาตรงกับหน้าเว็บ' : ' · ราคาไม่ตรงกับหน้าเว็บ'}` },
       { label: 'ตัวคูณความสูงหญ้า', ok: levelsMatch, detail: `${levelRows.length} ระดับ${levelsMatch ? ' · ตรงกัน' : ' · ไม่ตรงกัน'}` },
-      { label: 'ส่วนลดแพ็กเกจรายเดือน', ok: packagesMatch, detail: `${packageRows.length} แพ็กเกจ${packagesMatch ? ' · ตรงกัน' : ' · ไม่ตรงกัน'}` },
+      { label: 'แพ็กเกจรายเดือน', ok: packagesMatch, detail: `${packageRows.length} แพ็กเกจ${packagesMatch ? ' · ตรงกัน' : ' · ไม่ตรงกัน'}` },
       { label: 'ค่า Platform', ok: Number(feeRow?.value) === platformFeePercent, detail: feeRow ? `${feeRow.value}% ในฐานข้อมูล` : 'ไม่พบค่า platform_fee_percent' },
     ],
   };

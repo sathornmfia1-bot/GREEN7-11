@@ -8,7 +8,8 @@ import { hashSecret, lockMinutes, maxFailedAttempts, maxResetAttempts, passwordP
 import { overallRating, reviewProblem, reviewStatuses, type ReviewInput } from '../_lib/review';
 import { adjustmentBlockReason, jobAreaBlockReason, maxCompletionPhotos, maxTeamSize, minCompletionPhotos } from '../_lib/rules';
 import type { Role } from '../_lib/session';
-import type { CustomerAccount, Inspection, MechanicAccount, Result, ServiceAddress, Snapshot } from '../_lib/types';
+import type { CustomerAccount, Inspection, Job, MechanicAccount, PackageVisit, Result, ServiceAddress, Snapshot } from '../_lib/types';
+import { addDays, offerHours, releaseLeadDays, rescheduleProblem, visitSchedule } from '../_lib/visits';
 
 // ทุกฟังก์ชันในไฟล์นี้ทำงานบนเซิร์ฟเวอร์ ตรวจเซสชันของ role ที่เกี่ยวข้อง แล้วอ่าน/เขียน Supabase
 // ระบบล็อกอินเป็นแบบจำลอง (OTP แสดงบนหน้าจอ) แต่ข้อมูลทั้งหมดเก็บในฐานข้อมูลจริง
@@ -45,7 +46,10 @@ const missingTable = (error: { code?: string } | null) => error?.code === 'PGRST
 export async function loadSnapshot(role: Role): Promise<{ ok: true; data: Snapshot } | { ok: false; message: string; auth: boolean }> {
   try {
     const me = await requireUser(role);
-    if (role !== 'admin') await expireAdjustmentsNow();
+    if (role !== 'admin') {
+      await expireAdjustmentsNow();
+      await releaseDueVisits();
+    }
     if (role === 'customer') return { ok: true, data: await customerSnapshot(me) };
     if (role === 'mechanic') return { ok: true, data: await mechanicSnapshot(me) };
     return { ok: true, data: await adminSnapshot() };
@@ -125,18 +129,20 @@ async function notificationsOf(userId: string) {
 async function customerSnapshot(me: UserRow): Promise<Snapshot> {
   const jobRows = must(await sb().from('jobs').select(jobSelect).eq('customer_id', me.id).order('appointment_date'));
   const jobs = jobRows.map((row) => toJob(row, { showPhone: true }));
+  await annotateVisits(jobs, null);
   const mechanicIds = [...new Set(jobs.map((job) => job.mechanicId).filter((id): id is string => Boolean(id)))];
-  const [addressRows, mechanicRows, extra, notifications] = await Promise.all([
+  const [addressRows, mechanicRows, extra, notifications, visits] = await Promise.all([
     addressesOf([me.id]),
     mechanicIds.length ? sb().from('mechanic_profiles').select(mechanicSelect).in('user_id', mechanicIds).then(must) : Promise.resolve([]),
     related(jobs.map((job) => job.id)),
     notificationsOf(me.id),
+    visitsOfCustomer(me.id),
   ]);
   return {
     customers: [toCustomer(me, addressRows)],
     // ลูกค้าเห็นเฉพาะชื่อ รูป เรทติ้ง และเครื่องมือที่ใช้ของช่างที่รับงานตัวเอง
     mechanics: await withEquipment(mechanicRows.map((row) => toMechanic(row, { full: false }))),
-    admins: [], jobs, ...extra, notifications, inspections: [],
+    admins: [], jobs, ...extra, notifications, inspections: [], visits,
   };
 }
 
@@ -147,7 +153,10 @@ async function mechanicSnapshot(me: UserRow): Promise<Snapshot> {
     sb().from('jobs').select(jobSelect).or(`mechanic_id.eq.${me.id},and(status.eq.open,cancelled_at.is.null)`).order('appointment_date').then(must),
   ]);
   // เบอร์โทรลูกค้าแสดงเฉพาะงานที่ช่างคนนี้รับแล้ว
-  const jobs = jobRows.map((row: { mechanic_id: string | null }) => toJob(row, { showPhone: row.mechanic_id === me.id }));
+  const allJobs = jobRows.map((row: { mechanic_id: string | null }) => toJob(row, { showPhone: row.mechanic_id === me.id }));
+  // งานนัดถัดไปที่เสนอให้ช่างประจำคนอื่นอยู่ → ยังไม่แสดงใน Job Pool ของช่างคนนี้
+  const hidden = await annotateVisits(allJobs, me.id);
+  const jobs = allJobs.filter((job) => !hidden.has(job.id));
   const myJobIds = jobs.filter((job) => job.mechanicId === me.id).map((job) => job.id);
   const [extra, notifications, inspections] = await Promise.all([related(myJobIds), notificationsOf(me.id), inspectionsOf(myJobIds)]);
   return { customers: [], mechanics: await withEquipment([toMechanic(profile, { full: true })]), admins: [], jobs, ...extra, notifications, inspections };
@@ -374,7 +383,7 @@ export type BookingInput = {
   area: number;
   grassHeight: number;
   monthlyFrequency: number;
-  sundayPackage: boolean;
+  packageCode: string;
   prepaidMonths: number;
   date: string;
   addressId: string;
@@ -393,7 +402,7 @@ export async function createBooking(input: BookingInput) {
     if (!address) return fail('ไม่พบที่อยู่บริการ');
 
     // คำนวณราคาจากตารางราคาในฐานข้อมูล
-    let serviceCode: string;
+    let serviceCode: string | null = null;
     let serviceName: string;
     let packageCode: string | null = null;
     let unitPrice: number;
@@ -408,34 +417,47 @@ export async function createBooking(input: BookingInput) {
       unitPrice = pricing.pricePerVisit(service.code, area, grassLevel);
     } else {
       if (![3, 6, 12].includes(input.prepaidMonths)) return fail('จำนวนเดือนที่ชำระล่วงหน้าไม่ถูกต้อง');
-      const pack = input.sundayPackage
-        ? pricing.packages.find((item) => item.fixed_monthly_price !== null)
-        : pricing.packages.find((item) => item.visits_per_month === input.monthlyFrequency);
-      if (!pack) return fail('ไม่พบแพ็กเกจ');
+      if (![1, 2, 3, 4].includes(input.monthlyFrequency)) return fail('จำนวนครั้งต่อเดือนไม่ถูกต้อง');
+      const pack = pricing.packages.find((item) => item.code === input.packageCode);
+      if (!pack) return fail(pricing.packages.length ? 'ไม่พบแพ็กเกจ' : 'แพ็กเกจรายเดือนยังไม่พร้อม · แอดมินต้องรัน supabase/migrations/20261027000000_care_packages.sql ใน Supabase SQL Editor');
       packageCode = pack.code;
-      if (pack.fixed_monthly_price !== null) {
-        serviceCode = pricing.packages.find((item) => item.pricing_service_code)?.pricing_service_code ?? pricing.services[0].code;
-        serviceName = pack.name;
-        unitPrice = Number(pack.fixed_monthly_price);
-      } else {
-        serviceCode = pack.pricing_service_code!;
-        const service = pricing.services.find((item) => item.code === serviceCode)!;
-        serviceName = `${service.name} · ${pack.name}`;
-        unitPrice = Math.round(pricing.pricePerVisit(serviceCode, area, input.grassHeight) * pack.visits_per_month! * (1 - Number(pack.discount_percent) / 100));
-      }
+      // แพ็กเกจรายเดือนไม่คิดตามความสูงหญ้า (ระดับ 0)
+      grassLevel = 0;
+      serviceName = `${pack.name} · ${input.monthlyFrequency} ครั้งต่อเดือน`;
+      unitPrice = pricing.packageVisitPrice(pack.code, area) * input.monthlyFrequency;
     }
     const total = input.mode === 'monthly' ? unitPrice * input.prepaidMonths : unitPrice;
+    if (input.mode === 'monthly') {
+      // ตารางนัดยังไม่พร้อม (ยังไม่ได้รัน migration) → ไม่รับชำระ
+      const check = await sb().from('booking_visits').select('id').limit(1);
+      if (missingTable(check.error)) return fail('ระบบตารางนัดยังไม่พร้อม · แอดมินต้องรัน supabase/migrations/20261028000000_package_visits.sql ใน Supabase SQL Editor');
+      if (check.error) throw check.error;
+    }
 
     const booking = must(await sb().from('bookings').insert({
       customer_id: me.id, service_address_id: address.id, pricing_mode: input.mode,
       service_type_code: input.mode === 'single' ? serviceCode : null, monthly_package_code: packageCode, prepaid_months: input.mode === 'monthly' ? input.prepaidMonths : null,
       area_sq_wah: area, grass_height_level: grassLevel, first_appointment_date: input.date, unit_price: unitPrice, total_amount: total,
-      price_breakdown: { serviceCode, area, grassHeight: grassLevel, unitPrice, prepaidMonths: input.prepaidMonths }, status: 'paid',
+      price_breakdown: { serviceCode, packageCode, serviceName, visitsPerMonth: input.mode === 'monthly' ? input.monthlyFrequency : null, area, grassHeight: grassLevel, unitPrice, prepaidMonths: input.prepaidMonths }, status: 'paid',
     }).select('id').single());
     must(await sb().from('payments').insert({ booking_id: booking.id, payer_id: me.id, type: 'booking', amount: total, qr_reference: `MOCKQR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, status: 'paid', paid_at: new Date().toISOString() }));
     if (input.photos.length) must(await sb().from('booking_photos').insert(input.photos.map((url, index) => ({ booking_id: booking.id, url, sort_order: index }))));
+
+    if (input.mode === 'monthly') {
+      // แพ็กเกจรายเดือน: สร้างนัดทั้งหมด เงินแบ่งเป็นรายนัด · นัดแรกเข้า Job Pool ทันที นัดถัดไปสร้างงานล่วงหน้า 7 วัน
+      const schedule = visitSchedule(input.date, input.monthlyFrequency, input.prepaidMonths);
+      const visitAmount = unitPrice / input.monthlyFrequency;
+      const visitRows = must(await sb().from('booking_visits').insert(schedule.map((visit) => ({
+        booking_id: booking.id, visit_no: visit.visitNo, cycle_no: visit.cycleNo, cycle_start: visit.cycleStart, cycle_end: visit.cycleEnd, scheduled_date: visit.date, amount: visitAmount,
+      }))).select('id, booking_id, visit_no, scheduled_date, amount').order('visit_no'));
+      const firstJobId = await releaseVisit(visitRows[0], pricing.platformFeePercent);
+      await releaseDueVisits();
+      await notify(me.id, 'booking_paid', `ชำระเงิน ฿${money(total)} สำเร็จ · แพ็กเกจ “${serviceName}” ${schedule.length} นัด · นัดแรกเข้า Job Pool แล้ว รอช่างรับงาน`, firstJobId ?? undefined);
+      return { ...ok(`ชำระเงิน ฿${money(total)} สำเร็จ · สร้างตารางนัด ${schedule.length} นัดแล้ว นัดแรกเข้า Job Pool แล้ว`), jobId: (firstJobId ?? booking.id) as string };
+    }
+
     const job = must(await sb().from('jobs').insert({
-      booking_id: booking.id, customer_id: me.id, title: input.mode === 'single' ? 'งานจ่ายครั้งเดียว' : 'งานแพ็กเกจรายเดือน', is_monthly: input.mode === 'monthly',
+      booking_id: booking.id, customer_id: me.id, title: 'งานจ่ายครั้งเดียว', is_monthly: false,
       service_name: serviceName, service_type_code: serviceCode, area_sq_wah: area, grass_height_level: grassLevel, appointment_date: input.date,
       address_line: address.address_line, province: address.province, amphoe: address.amphoe, district: address.district, zipcode: address.zipcode, lat: address.lat, lng: address.lng,
       quote_amount: total, final_amount: total, platform_fee_percent: pricing.platformFeePercent,
@@ -445,11 +467,139 @@ export async function createBooking(input: BookingInput) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// แพ็กเกจรายเดือน: ตารางนัด (booking_visits)
+// ---------------------------------------------------------------------------
+type VisitRow = { id: string; booking_id: string; visit_no: number; scheduled_date: string; amount: number };
+
+// สร้างงานของนัดนี้เข้า Job Pool · นัดที่ 2 เป็นต้นไปเสนอให้ช่างคนล่าสุดของแพ็กเกจก่อน 24 ชม. · คืนค่า job id
+async function releaseVisit(visit: VisitRow, platformFeePercent: number): Promise<string | null> {
+  // จองนัดนี้ก่อน กันสร้างงานซ้ำเมื่อหลายหน้าโหลดพร้อมกัน
+  const claimed = must(await sb().from('booking_visits').update({ status: 'released' }).eq('id', visit.id).eq('status', 'scheduled').select('id'));
+  if (!claimed.length) return null;
+  try {
+    const booking = must(await sb().from('bookings').select('customer_id, service_address_id, area_sq_wah, price_breakdown, status').eq('id', visit.booking_id).single());
+    if (booking.status === 'cancelled') {
+      must(await sb().from('booking_visits').update({ status: 'cancelled' }).eq('id', visit.id));
+      return null;
+    }
+    const address = must(await sb().from('service_addresses').select('*').eq('id', booking.service_address_id).single());
+    const earlier = must(await sb().from('booking_visits').select('job_id').eq('booking_id', visit.booking_id).lt('visit_no', visit.visit_no).not('job_id', 'is', null));
+    const lastMechanic = earlier.length
+      ? must(await sb().from('jobs').select('mechanic_id').in('id', earlier.map((row: { job_id: string }) => row.job_id)).not('mechanic_id', 'is', null).neq('status', 'cancelled').order('appointment_date', { ascending: false }).limit(1))[0]?.mechanic_id as string | undefined
+      : undefined;
+    const amount = Number(visit.amount);
+    const offer = lastMechanic ? { offered_to: lastMechanic, offer_expires_at: new Date(Date.now() + offerHours * 3600000).toISOString() } : {};
+    const job = must(await sb().from('jobs').insert({
+      booking_id: visit.booking_id, customer_id: booking.customer_id, title: 'งานแพ็กเกจรายเดือน', is_monthly: true,
+      service_name: (booking.price_breakdown as { serviceName?: string })?.serviceName ?? 'แพ็กเกจรายเดือน', service_type_code: null, area_sq_wah: booking.area_sq_wah, grass_height_level: 0,
+      appointment_date: visit.scheduled_date,
+      address_line: address.address_line, province: address.province, amphoe: address.amphoe, district: address.district, zipcode: address.zipcode, lat: address.lat, lng: address.lng,
+      quote_amount: amount, final_amount: amount, platform_fee_percent: platformFeePercent, ...offer,
+    }).select('id').single());
+    must(await sb().from('booking_visits').update({ job_id: job.id }).eq('id', visit.id));
+    if (lastMechanic) await notify(lastMechanic, 'visit_offered', `งานนัดถัดไปของลูกค้าประจำ วันที่ ${visit.scheduled_date} เสนอให้คุณก่อน · กดรับภายใน ${offerHours} ชม. ก่อนเปิดให้ช่างทุกคน`, job.id);
+    return job.id as string;
+  } catch (error) {
+    await sb().from('booking_visits').update({ status: 'scheduled' }).eq('id', visit.id).is('job_id', null);
+    throw error;
+  }
+}
+
+// นัดที่ถึงกำหนด (ภายใน 7 วัน) → สร้างงาน · เรียกทุกครั้งที่ลูกค้า/ช่างโหลดข้อมูล (ยังไม่มีตัวตั้งเวลา) · ยังไม่ได้รัน migration → ข้าม
+async function releaseDueVisits() {
+  const { data, error } = await sb().from('booking_visits').select('id, booking_id, visit_no, scheduled_date, amount')
+    .eq('status', 'scheduled').lte('scheduled_date', addDays(bangkokToday(), releaseLeadDays)).order('scheduled_date').limit(50);
+  if (missingTable(error)) return;
+  if (error) throw error;
+  if (!data.length) return;
+  const pricing = await loadPricing();
+  for (const visit of data as VisitRow[]) await releaseVisit(visit, pricing.platformFeePercent);
+}
+
+async function visitsOfCustomer(customerId: string): Promise<PackageVisit[]> {
+  const { data, error } = await sb().from('booking_visits').select('*, booking:bookings!inner(customer_id)').eq('booking.customer_id', customerId).order('scheduled_date');
+  if (missingTable(error)) return [];
+  if (error) throw error;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return data.map((row: any) => ({
+    id: row.id, bookingId: row.booking_id, visitNo: row.visit_no, cycleNo: row.cycle_no, cycleStart: row.cycle_start, cycleEnd: row.cycle_end,
+    date: row.scheduled_date, amount: Number(row.amount), status: row.status, jobId: row.job_id ?? undefined,
+  }));
+}
+
+// ใส่ข้อมูลนัด (นัดที่ n จาก N) และข้อเสนอช่างประจำลงในงาน · คืนชุด id งานที่เสนอให้ช่างคนอื่นอยู่ (ซ่อนจาก Job Pool ของ meId)
+async function annotateVisits(jobs: Job[], meId: string | null): Promise<Set<string>> {
+  const hidden = new Set<string>();
+  const monthlyIds = jobs.filter((job) => job.isMonthly).map((job) => job.id);
+  if (!monthlyIds.length) return hidden;
+  const visits = await sb().from('booking_visits').select('booking_id, visit_no, job_id').in('job_id', monthlyIds);
+  if (missingTable(visits.error)) return hidden;
+  if (visits.error) throw visits.error;
+  const bookingIds = [...new Set(visits.data.map((row: { booking_id: string }) => row.booking_id))];
+  const [counts, offers] = await Promise.all([
+    bookingIds.length ? sb().from('booking_visits').select('booking_id').in('booking_id', bookingIds).neq('status', 'cancelled').then(must) : Promise.resolve([]),
+    sb().from('jobs').select('id, offered_to, offer_expires_at').in('id', monthlyIds).then(must),
+  ]);
+  const now = Date.now();
+  for (const job of jobs) {
+    const visit = visits.data.find((row: { job_id: string }) => row.job_id === job.id);
+    if (visit) {
+      job.visitNo = visit.visit_no;
+      job.visitCount = counts.filter((row: { booking_id: string }) => row.booking_id === visit.booking_id).length;
+      if (!job.priceNote?.startsWith('ปรับ')) job.priceNote = `นัดที่ ${job.visitNo}/${job.visitCount} · ราคาต่อนัด`;
+    }
+    const offer = offers.find((row: { id: string }) => row.id === job.id) as { offered_to: string | null; offer_expires_at: string | null } | undefined;
+    const active = offer?.offered_to && offer.offer_expires_at && Date.parse(offer.offer_expires_at) > now && !job.mechanicId;
+    if (active && meId) {
+      if (offer.offered_to === meId) {
+        job.offeredToMe = true;
+        job.offerExpiresAt = offer.offer_expires_at!;
+      } else {
+        hidden.add(job.id);
+      }
+    }
+  }
+  return hidden;
+}
+
+export async function rescheduleVisit(visitId: string, newDate: string) {
+  return guard(async () => {
+    const me = await requireUser('customer');
+    const visit = must(await sb().from('booking_visits').select('*, booking:bookings!inner(customer_id, status)').eq('id', visitId).eq('booking.customer_id', me.id).maybeSingle());
+    if (!visit || visit.status === 'cancelled' || visit.booking.status === 'cancelled') return fail('ไม่พบนัดนี้');
+    const job = visit.job_id ? must(await sb().from('jobs').select('id, mechanic_id, status, cancelled_at, service_name').eq('id', visit.job_id).single()) : null;
+    if (job && (job.cancelled_at || !['open', 'matched'].includes(job.status))) return fail('เลื่อนนัดไม่ได้ · ช่างเริ่มงานนี้แล้ว');
+    const others = must(await sb().from('booking_visits').select('scheduled_date').eq('booking_id', visit.booking_id).neq('id', visitId).neq('status', 'cancelled')).map((row: { scheduled_date: string }) => row.scheduled_date);
+    const problem = rescheduleProblem({ date: visit.scheduled_date, cycleStart: visit.cycle_start, cycleEnd: visit.cycle_end }, newDate, others, bangkokToday());
+    if (problem) return fail(problem);
+    must(await sb().from('booking_visits').update({ scheduled_date: newDate }).eq('id', visitId));
+    let note = '';
+    if (job) {
+      // ช่างที่รับงานไว้มีงานอื่นวันใหม่แล้ว (รับได้วันละ 1 งาน) → งานกลับเข้า Job Pool
+      const moved = await sb().from('jobs').update({ appointment_date: newDate }).eq('id', job.id);
+      if (moved.error?.code === '23505') {
+        must(await sb().from('jobs').update({ appointment_date: newDate, mechanic_id: null, status: 'open', accepted_at: null }).eq('id', job.id));
+        if (job.mechanic_id) await notify(job.mechanic_id, 'visit_rescheduled', `ลูกค้าเลื่อนนัด “${job.service_name}” จาก ${visit.scheduled_date} เป็น ${newDate} · คุณมีงานวันนั้นแล้ว งานจึงกลับเข้า Job Pool`, job.id);
+        note = ' · ช่างคนเดิมไม่ว่างวันนั้น งานกลับเข้า Job Pool เพื่อหาช่างใหม่';
+      } else {
+        if (moved.error) throw moved.error;
+        if (job.mechanic_id) await notify(job.mechanic_id, 'visit_rescheduled', `ลูกค้าเลื่อนนัด “${job.service_name}” จาก ${visit.scheduled_date} เป็น ${newDate}`, job.id);
+      }
+    } else if (newDate <= addDays(bangkokToday(), releaseLeadDays)) {
+      await releaseDueVisits();
+    }
+    const [year, month, day] = newDate.split('-');
+    return ok(`เลื่อนนัดที่ ${visit.visit_no} เป็นวันที่ ${day}/${month}/${Number(year) + 543} แล้ว${note}`);
+  });
+}
+
 export async function cancelBooking(jobId: string, refund: { bankName: string; accountNumber: string }) {
   return guard(async () => {
     const me = await requireUser('customer');
-    const job = must(await sb().from('jobs').select('id, booking_id, mechanic_id, status, appointment_date, final_amount, title, cancelled_at').eq('id', jobId).eq('customer_id', me.id).maybeSingle());
+    const job = must(await sb().from('jobs').select('id, booking_id, mechanic_id, status, appointment_date, final_amount, title, cancelled_at, is_monthly').eq('id', jobId).eq('customer_id', me.id).maybeSingle());
     if (!job || job.cancelled_at) return fail('ไม่พบการจองนี้');
+    if (job.is_monthly) return fail('นัดของแพ็กเกจรายเดือนยกเลิกรายนัดไม่ได้ · เลื่อนนัดได้ที่ “ตารางนัด”');
     if (!['open', 'matched'].includes(job.status) || daysFromToday(job.appointment_date) < 2) return fail('ยกเลิกไม่ได้ · ต้องยกเลิกก่อนวันนัดหมายอย่างน้อย 2 วัน และก่อนช่างถึงที่นัดหมาย');
     if (!refund.bankName) return fail('กรุณาเลือกธนาคารสำหรับรับเงินคืน');
     const account = digitsOf(refund.accountNumber);
@@ -609,8 +759,10 @@ export async function acceptJob(jobId: string) {
     const me = await requireUser('mechanic');
     const profile = await verifiedMechanic(me);
     if (profile.verification_status !== 'verified') return fail('บัญชีช่างยังไม่ผ่านการตรวจสอบจากแอดมิน จึงยังรับงานไม่ได้');
-    const job = must(await sb().from('jobs').select('id, customer_id, appointment_date, service_name, title, area_sq_wah').eq('id', jobId).maybeSingle());
+    // select('*') ใช้ได้ทั้งก่อนและหลังรัน migration ตารางนัด (offered_to)
+    const job = must(await sb().from('jobs').select('*').eq('id', jobId).maybeSingle());
     if (!job) return fail('ไม่พบงานนี้');
+    if (job.offered_to && job.offered_to !== me.id && job.offer_expires_at && Date.parse(job.offer_expires_at) > Date.now()) return fail('งานนี้เสนอให้ช่างประจำของลูกค้าก่อน · รอให้เปิดใน Job Pool');
     // พื้นที่งานต้องไม่เกินกำลังทีม (คนละ 400 ตร.ว.) · ยังไม่ได้รัน migration จำนวนสมาชิก → ถือว่าทำคนเดียว
     const team = await sb().from('mechanic_profiles').select('team_size').eq('user_id', me.id).maybeSingle();
     if (team.error && team.error.code !== '42703') throw team.error;
@@ -642,6 +794,11 @@ export async function cancelJobByMechanic(jobId: string) {
     if (!job || job.cancelled_at) return fail('ไม่พบงานนี้ในงานของคุณ');
     if (job.status !== 'matched' || daysFromToday(job.appointment_date) < 2) return fail('ยกเลิกไม่ได้ · ช่างต้องยกเลิกก่อนวันนัดหมายอย่างน้อย 2 วัน');
     must(await sb().from('jobs').update({ mechanic_id: null, status: 'open', accepted_at: null }).eq('id', jobId));
+    // งานนัดแพ็กเกจที่เคยเสนอให้ช่างคนนี้ → เปิดให้ช่างทุกคนทันที (ยังไม่ได้รัน migration → ไม่มีคอลัมน์ ข้ามได้)
+    if (job.is_monthly) {
+      const cleared = await sb().from('jobs').update({ offered_to: null, offer_expires_at: null }).eq('id', jobId);
+      if (cleared.error && cleared.error.code !== '42703' && cleared.error.code !== 'PGRST204') throw cleared.error;
+    }
     must(await sb().from('quote_adjustments').update({ customer_decision: 'expired', decided_at: new Date().toISOString() }).eq('job_id', jobId).eq('customer_decision', 'pending'));
     await notify(job.customer_id, 'job_cancelled_by_mechanic', `ช่างยกเลิกงาน “${job.service_name}” วันที่ ${job.appointment_date} · งานกลับเข้า Job Pool เพื่อหาช่างใหม่`, jobId);
     return ok(`ยกเลิกงาน “${job.title}” แล้ว · งานกลับไปที่ Job Pool`);
@@ -827,6 +984,9 @@ export async function resetActivityData() {
       ['ai_inspections', 'id'], ['inspection_photos', 'id'], ['notifications', 'id'], ['job_status_history', 'id'], ['jobs', 'id'],
       ['subscription_cycles', 'id'], ['booking_photos', 'id'], ['bookings', 'id'],
     ];
+    // ตารางนัดอ้างอิงงาน → ลบก่อน · ยังไม่ได้รัน migration → ข้าม
+    const visits = await sb().from('booking_visits').delete().not('id', 'is', null);
+    if (visits.error && !missingTable(visits.error)) throw visits.error;
     for (const [table, key] of tables) must(await sb().from(table).delete().not(key, 'is', null));
     must(await sb().from('mechanic_profiles').update({ rating_average: 0, rating_count: 0, completed_jobs_count: 0 }).not('user_id', 'is', null));
     return ok('ล้างข้อมูลการใช้งานแล้ว (บัญชีผู้ใช้ยังอยู่)');

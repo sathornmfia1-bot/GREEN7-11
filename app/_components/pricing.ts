@@ -33,8 +33,13 @@ export function heightText(serviceName: string, grassHeight: number) {
   return usesFixedHeight(serviceName) ? fixedHeightLabel(serviceName) : `หญ้า${grassHeightLabels[grassHeight].replace('มากกว่า', 'สูงกว่า').replace('น้อยกว่า', 'ต่ำกว่า')}`;
 }
 
-// แพ็กเกจรายเดือน (1–3 ครั้งต่อเดือน) คิดราคาต่อครั้งเหมือนจ่ายครั้งเดียว ด้วยบริการนี้
-export const monthlyPackageService = 'ตัดหญ้าและแต่งกิ่ง ขนทิ้ง';
+// แพ็กเกจรายเดือน: ราคาต่อครั้ง = ราคาเริ่มต้น (ไม่เกิน 100 ตร.ว.) + ส่วนเกินต่อ ตร.ว. ไม่คิดตัวคูณความสูงหญ้า
+// ราคาต่อเดือน = ราคาต่อครั้ง × จำนวนครั้ง (1–4) · code ต้องตรงกับ monthly_packages ในฐานข้อมูล
+export const monthlyPackages = [
+  { code: 'care_basic', name: 'ตัดหญ้า แต่งกิ่ง ขนทิ้ง ใส่ปุ๋ย รดน้ำ', basePrice: 1200, extraPerWa: 6 },
+  { code: 'care_full', name: 'ตัดหญ้า แต่งกิ่ง ขนทิ้ง ใส่ปุ๋ย รดน้ำ พรวนดิน พ่นยา', basePrice: 1800, extraPerWa: 7 },
+];
+export const monthlyFrequencies = [1, 2, 3, 4];
 
 export function pricePerVisit(serviceName: string, area: string | number, grassHeight: number) {
   const option = pricingOptions.find((item) => item.name === serviceName) ?? pricingOptions[0];
@@ -42,12 +47,13 @@ export function pricePerVisit(serviceName: string, area: string | number, grassH
   return Math.round((option.basePrice + Math.max(areaValue - baseAreaWa, 0) * option.extraPerWa) * grassHeightMultipliers[grassHeight]);
 }
 
-// ส่วนลดแพ็กเกจรายเดือนตามจำนวนครั้งต่อเดือน
-export const monthlyDiscounts: Record<number, number> = { 1: 0.1, 2: 0.15, 3: 0.2 };
+export function monthlyVisitPrice(packageCode: string, area: string | number) {
+  const pack = monthlyPackages.find((item) => item.code === packageCode) ?? monthlyPackages[0];
+  return pack.basePrice + Math.max((Number(area) || 0) - baseAreaWa, 0) * pack.extraPerWa;
+}
 
-export function monthlyPackagePrice(frequency: number, area: string | number, grassHeight: number) {
-  const fullPrice = pricePerVisit(monthlyPackageService, area, grassHeight) * frequency;
-  return { fullPrice, price: Math.round(fullPrice * (1 - (monthlyDiscounts[frequency] ?? 0))) };
+export function monthlyPackagePrice(packageCode: string, frequency: number, area: string | number) {
+  return monthlyVisitPrice(packageCode, area) * frequency;
 }
 
 // ค่า Platform ที่หักจากราคาลูกค้า ก่อนแสดงเป็นรายได้สุทธิของช่าง

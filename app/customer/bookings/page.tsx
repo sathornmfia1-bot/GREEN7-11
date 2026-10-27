@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { formatAddress } from '../../_components/address';
-import { formatThaiDate, isoDateFromToday } from '../../_components/date-input';
+import { DateInput, formatThaiDate, isoDateFromToday } from '../../_components/date-input';
 import { thaiBanks } from '../../_components/form-ui';
 import { AdjustmentDecision } from '../../_components/inspection';
 import { Accordion, BottomSheet, MobileStickyBar, mobileCtaClass } from '../../_components/mobile';
@@ -14,8 +14,72 @@ import type { Job } from '../../_lib/types';
 import { heightText } from '../../_components/pricing';
 import { useCustomer, useData, useRun } from '../../_components/role-shell';
 import { WorkerCard } from '../../_components/worker-card';
-import { cancelBooking, decideAdjustment, payAdjustmentDifference, simulateAdjustmentExpiry, submitReview } from '../../_server/actions';
+import { cancelBooking, decideAdjustment, payAdjustmentDifference, rescheduleVisit, simulateAdjustmentExpiry, submitReview } from '../../_server/actions';
+import { addDays, daysBetween, minVisitGapDays, rescheduleLeadDays, rescheduleProblem } from '../../_lib/visits';
 import { canCustomerCancel, customerCancelDaysBefore, customerCancelDeadline, customerStepIndex, customerSteps, jobWhen, money, workStageLabels } from '../../_lib/rules';
+
+// แพ็กเกจรายเดือน: ตารางนัดทั้งหมดของการจองนี้ · เลื่อนนัดได้ก่อนวันนัด 1 วัน ภายในรอบเดือนเดียวกัน
+function VisitSchedule({ job }: { job: Job }) {
+  const db = useData();
+  const run = useRun();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [newDate, setNewDate] = useState('');
+  const [error, setError] = useState('');
+  const visits = (db.visits ?? []).filter((visit) => visit.bookingId === job.bookingId && visit.status !== 'cancelled').sort((a, b) => a.visitNo - b.visitNo);
+  if (!visits.length) return null;
+  const today = isoDateFromToday(0);
+
+  async function save(visitId: string) {
+    const result = await run(rescheduleVisit(visitId, newDate));
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setEditing(null);
+  }
+
+  return (
+    <details className="group rounded-xl border border-slate-200 bg-slate-50 text-sm" open={visits.length <= 4}>
+      <summary className="flex min-h-[44px] cursor-pointer list-none flex-wrap items-center justify-between gap-x-2 px-4 py-2 font-semibold text-slate-800 [&::-webkit-details-marker]:hidden">
+        <span>📅 ตารางนัด {visits.length} นัด <span aria-hidden="true" className="inline-block text-slate-400 transition-transform group-open:rotate-180">▾</span></span>
+        <span className="text-xs font-normal text-slate-500">เลื่อนได้ก่อนวันนัด 1 วัน · ห่างกันอย่างน้อย {minVisitGapDays} วัน</span>
+      </summary>
+      <ol className="divide-y divide-slate-200 border-t border-slate-200">
+        {visits.map((visit) => {
+          const visitJob = visit.jobId ? db.jobs.find((item) => item.id === visit.jobId) : undefined;
+          const stage = visitJob?.workStage;
+          const started = Boolean(visitJob?.mechanicId) && stage !== undefined && stage !== 'matched';
+          const status = started ? (stage === 'done' ? 'เสร็จแล้ว' : 'กำลังทำงาน') : visitJob?.mechanicId ? 'มีช่างรับแล้ว' : visitJob ? 'รอช่างรับงาน' : 'รอถึงกำหนด';
+          const canMove = !started && daysBetween(today, visit.date) >= rescheduleLeadDays;
+          const others = visits.filter((item) => item.id !== visit.id).map((item) => item.date);
+          const earliest = addDays(today, rescheduleLeadDays) > visit.cycleStart ? addDays(today, rescheduleLeadDays) : visit.cycleStart;
+          const isEditing = editing === visit.id;
+          return (
+            <li key={visit.id} className={`px-4 py-2.5 ${visit.jobId === job.id ? 'bg-brand-50' : ''}`}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="w-14 shrink-0 text-slate-500">นัดที่ {visit.visitNo}</span>
+                <span className="font-semibold text-slate-900">{formatThaiDate(visit.date)}</span>
+                <span className="text-xs text-slate-500">{status}</span>
+                {canMove && !isEditing && <button type="button" onClick={() => { setEditing(visit.id); setNewDate(visit.date); setError(''); }} className="ml-auto min-h-[36px] rounded-full border border-brand-600 bg-white px-3 text-xs font-semibold text-brand-700 hover:bg-brand-50">เลื่อนนัด</button>}
+              </div>
+              {isEditing && (
+                <div className="mt-2 rounded-lg border border-brand-200 bg-white p-3">
+                  <label className="block text-xs font-semibold text-slate-700" htmlFor={`visit-${visit.id}`}>วันนัดใหม่ (ภายในรอบ {formatThaiDate(visit.cycleStart)} – {formatThaiDate(visit.cycleEnd)})</label>
+                  <div className="mt-1"><DateInput id={`visit-${visit.id}`} value={newDate} onChange={(value) => { setNewDate(value); setError(rescheduleProblem(visit, value, others, today) ?? ''); }} min={earliest} max={visit.cycleEnd} className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500" /></div>
+                  {error && <p role="alert" className="mt-1 text-xs text-rose-700">{error}</p>}
+                  <div className="mt-2 flex gap-2">
+                    <button type="button" onClick={() => save(visit.id)} disabled={newDate === visit.date || Boolean(rescheduleProblem(visit, newDate, others, today))} className="rounded-full bg-brand-500 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300">บันทึกวันใหม่</button>
+                    <button type="button" onClick={() => setEditing(null)} className="rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700">ไม่เลื่อน</button>
+                  </div>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </details>
+  );
+}
 
 function BookingCard({ job }: { job: Job }) {
   const db = useData();
@@ -80,6 +144,8 @@ function BookingCard({ job }: { job: Job }) {
         ))}
       </ol>
 
+      {job.isMonthly && <div className="mt-4"><VisitSchedule job={job} /></div>}
+
       {mechanic && <div className="mt-4"><WorkerCard name={`${mechanic.firstName} ${mechanic.lastName}`} photo={mechanic.photoDataUrl} rating={mechanic.ratingAverage} reviewCount={mechanic.ratingCount} completedJobs={mechanic.completedJobsCount} status={workStageLabels[stage]} equipment={mechanic.equipment} /></div>}
 
       {adjustments.map((adjustment) => (
@@ -112,7 +178,7 @@ function BookingCard({ job }: { job: Job }) {
         </div>
       )}
 
-      {stage === 'matched' && (cancelOpen ? (
+      {stage === 'matched' && !job.isMonthly && (cancelOpen ? (
         <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4">
           <p className="font-semibold text-rose-900">ยกเลิกการจ้างงาน</p>
           <p className="mt-1 text-sm text-rose-800">คืนเงิน <span className="font-bold">฿{money(job.price)}</span> เข้าบัญชีที่ระบุ</p>
@@ -189,7 +255,7 @@ function MobileBookingDetail({ job, onBack }: { job: Job; onBack: () => void }) 
   const step = customerStepIndex(job, Boolean(review));
   const stage = job.workStage ?? 'matched';
   const canReview = stage === 'done' && Boolean(job.mechanicId) && !review && !job.cancelledAt;
-  const canCancel = stage === 'matched' && !job.cancelledAt && canCustomerCancel(job);
+  const canCancel = stage === 'matched' && !job.cancelledAt && !job.isMonthly && canCustomerCancel(job);
 
   async function confirmCancel() {
     setBusy(true);
@@ -261,6 +327,8 @@ function MobileBookingDetail({ job, onBack }: { job: Job; onBack: () => void }) 
 
         {review && <div className="card p-4"><ReviewSummary review={review} title="รีวิวแล้ว" /></div>}
 
+        {job.isMonthly && !job.cancelledAt && <VisitSchedule job={job} />}
+
         <div className="card overflow-hidden">
           <Accordion title="รายละเอียดงานและที่อยู่">
             <dl className="space-y-2 text-sm">
@@ -272,7 +340,7 @@ function MobileBookingDetail({ job, onBack }: { job: Job; onBack: () => void }) 
           <Accordion title="การชำระเงิน · Escrow">
             <p className="text-sm text-slate-600">ชำระแล้ว <span className="font-semibold text-slate-900">฿{money(job.price)}</span>{job.priceNote && ` (${job.priceNote})`} · เงินพักไว้ในระบบ และโอนให้ช่างเมื่อคุณรีวิว หรือครบ 2 วันหลังทำงานเสร็จ</p>
           </Accordion>
-          {stage === 'matched' && !job.cancelledAt && (
+          {stage === 'matched' && !job.cancelledAt && !job.isMonthly && (
             <Accordion title="การยกเลิก">
               <p className="text-sm text-slate-600">{canCustomerCancel(job) ? `ยกเลิกได้ถึงวันที่ ${formatThaiDate(customerCancelDeadline(job))} · รับเงินคืนเต็มจำนวน` : `ยกเลิกไม่ได้ · ต้องยกเลิกก่อนวันนัดหมาย ${customerCancelDaysBefore} วัน`}</p>
             </Accordion>
